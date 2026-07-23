@@ -1,0 +1,5 @@
+# Production dependencies. Install on the server with:
+#   pip install -r requirements-prod.txt
+-r requirements.txt
+gunicorn==23.*
+psycopg[binary]==3.*

@@ -133,3 +133,27 @@ LOGOUT_REDIRECT_URL = "login"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+# Reverse proxy / production (Caddy terminates TLS and proxies over plain HTTP)
+# https://docs.djangoproject.com/en/5.1/ref/settings/#secure-proxy-ssl-header
+
+# Caddy's reverse_proxy sets X-Forwarded-Proto; trust it so Django knows the
+# original request was HTTPS (correct scheme in redirects, secure cookies, etc.).
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Origins (scheme required) allowed for CSRF-protected POSTs. Django 5 rejects
+# HTTPS form posts whose Origin isn't listed here. e.g.
+#   CSRF_TRUSTED_ORIGINS=https://domiq-ufa.ru
+CSRF_TRUSTED_ORIGINS = [
+    o.strip() for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()
+]
+
+# Harden cookies and transport only in production (DEBUG=0). Left off in dev so
+# the http://localhost login still works.
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
