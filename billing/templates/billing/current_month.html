@@ -1,0 +1,36 @@
+{% extends "billing/base.html" %}
+{% block title %}Начисление за месяц{% endblock %}
+{% block content %}
+<h2>Начисление за {{ period|date:"F Y" }}</h2>
+<div class="card">
+  <h3>Внести показания</h3>
+  <form method="post">
+    {% csrf_token %}
+    {% for field in form %}
+      <label>{{ field.label }}</label>
+      {{ field }}
+      {% for e in field.errors %}<div class="msg err">{{ e }}</div>{% endfor %}
+    {% endfor %}
+    <button type="submit">Сохранить показания</button>
+  </form>
+</div>
+{% if statement %}
+<div class="card">
+  <h3>К оплате
+    <span class="badge {{ statement.status }}">{{ statement.get_status_display }}</span>
+  </h3>
+  <table>
+    <tr><th>Услуга</th><th>Кол-во</th><th>Тариф</th><th>Сумма, ₽</th></tr>
+    {% for l in statement.lines %}
+    <tr>
+      <td>{{ l.label }}</td>
+      <td>{% if l.quantity %}{{ l.quantity }}{% else %}—{% endif %}</td>
+      <td>{{ l.rate }}</td>
+      <td>{{ l.amount }}</td>
+    </tr>
+    {% endfor %}
+    <tr class="total"><td colspan="3">Итого</td><td>{{ statement.total }}</td></tr>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

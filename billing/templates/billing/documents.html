@@ -1,0 +1,11 @@
+{% extends "billing/base.html" %}
+{% block title %}Документы{% endblock %}
+{% block content %}
+<h2>Мои документы</h2>
+{% for d in documents %}
+<div class="card"><a href="{{ d.file.url }}">{{ d.title }}</a>
+  <div>Загружен: {{ d.uploaded_at|date:"d.m.Y" }}</div></div>
+{% empty %}
+<p>Документы не загружены.</p>
+{% endfor %}
+{% endblock %}

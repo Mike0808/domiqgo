@@ -1,0 +1,14 @@
+{% extends "billing/base.html" %}
+{% block title %}Вход{% endblock %}
+{% block content %}
+<h2>Вход</h2>
+<div class="card">
+  <form method="post">
+    {% csrf_token %}
+    <label>Логин</label>{{ form.username }}
+    <label>Пароль</label>{{ form.password }}
+    {% if form.errors %}<div class="msg err">Неверный логин или пароль.</div>{% endif %}
+    <button type="submit">Войти</button>
+  </form>
+</div>
+{% endblock %}

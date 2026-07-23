@@ -1,0 +1,19 @@
+{% extends "billing/base.html" %}
+{% block title %}История{% endblock %}
+{% block content %}
+<h2>История начислений</h2>
+{% for s in statements %}
+<div class="card">
+  <strong>{{ s.period|date:"F Y" }}</strong>
+  <span class="badge {{ s.status }}">{{ s.get_status_display }}</span>
+  <table>
+    {% for l in s.lines %}
+    <tr><td>{{ l.label }}</td><td>{{ l.amount }} ₽</td></tr>
+    {% endfor %}
+    <tr class="total"><td>Итого</td><td>{{ s.total }} ₽</td></tr>
+  </table>
+</div>
+{% empty %}
+<p>Пока нет начислений.</p>
+{% endfor %}
+{% endblock %}

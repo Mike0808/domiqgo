@@ -1,0 +1,68 @@
+from datetime import date
+from decimal import Decimal
+import pytest
+from django.contrib.auth.models import User
+from django.test import Client
+from django.utils import timezone
+from billing.models import Apartment, Tenant, Tariff, MeterReading, MonthlyStatement
+
+pytestmark = pytest.mark.django_db
+
+def _period_first_of_this_month():
+    today = timezone.localdate()
+    return today.replace(day=1)
+
+@pytest.fixture
+def tenant_setup():
+    a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
+    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
+    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
+    # baseline (previous month) readings set by landlord
+    prev = _period_first_of_this_month().replace(day=1)
+    baseline_period = date(prev.year - 1, 12, 1) if prev.month == 1 else date(prev.year, prev.month - 1, 1)
+    MeterReading.objects.create(apartment=a, period=baseline_period, meter="cold_water", value=Decimal("100"))
+    MeterReading.objects.create(apartment=a, period=baseline_period, meter="electricity_single", value=Decimal("1400"))
+    u = User.objects.create_user("ivanov", password="pass12345")
+    Tenant.objects.create(user=u, apartment=a, full_name="Иванов")
+    return a, u
+
+def _login(u):
+    c = Client()
+    assert c.login(username=u.username, password="pass12345")
+    return c
+
+def test_current_month_requires_login():
+    resp = Client().get("/")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
+
+def test_submit_readings_generates_statement(tenant_setup):
+    a, u = tenant_setup
+    c = _login(u)
+    resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
+    assert resp.status_code == 302   # redirect after POST
+    period = _period_first_of_this_month()
+    assert MeterReading.objects.filter(apartment=a, period=period, meter="cold_water",
+                                       entered_by_tenant=True).exists()
+    stmt = MonthlyStatement.objects.get(apartment=a, period=period)
+    # (110-100)*48.15 + (1500-1400)*4.87 = 481.50 + 487.00
+    assert stmt.total == Decimal("968.50")
+
+def test_backward_reading_is_rejected(tenant_setup):
+    a, u = tenant_setup
+    c = _login(u)
+    resp = c.post("/", {"cold_water": "90", "electricity_single": "1500"})
+    assert resp.status_code == 200            # re-renders form with error
+    assert b"\xd1\x83\xd0\xbc\xd0\xb5\xd0\xbd" in resp.content or b"error" in resp.content.lower() \
+        or "уменьш" in resp.content.decode("utf-8")
+    period = _period_first_of_this_month()
+    assert not MeterReading.objects.filter(apartment=a, period=period).exists()
+
+def test_tenant_cannot_see_other_apartment_history(tenant_setup):
+    a, u = tenant_setup
+    other = Apartment.objects.create(label="чужая кв")
+    MonthlyStatement.objects.create(apartment=other, period=date(2026, 5, 1), total=Decimal("999"))
+    c = _login(u)
+    resp = c.get("/history/")
+    assert resp.status_code == 200
+    assert b"999" not in resp.content
