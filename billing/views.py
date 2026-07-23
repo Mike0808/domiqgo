@@ -5,6 +5,7 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from .forms import MeterReadingForm
 from .models import MeterReading, MonthlyStatement
+from .services.calculation import MissingTariffError
 from .services.statements import meters_for, generate_statement
 
 def _current_period():
@@ -38,6 +39,10 @@ def current_month(request):
                     generate_statement(apartment, period)
             except ValueError as exc:
                 messages.error(request, f"Ошибка: показание уменьшилось. {exc}")
+                return render(request, "billing/current_month.html",
+                              {"form": form, "statement": None, "period": period})
+            except MissingTariffError:
+                messages.error(request, "Тариф не настроен. Обратитесь к арендодателю.")
                 return render(request, "billing/current_month.html",
                               {"form": form, "statement": None, "period": period})
             messages.success(request, "Показания сохранены.")

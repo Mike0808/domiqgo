@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.contrib import messages
 from .models import (
     Apartment, Tenant, Tariff, MeterReading, MonthlyStatement, Document,
 )
@@ -34,8 +35,19 @@ class MeterReadingAdmin(admin.ModelAdmin):
 
 @admin.action(description="Пересчитать начисления")
 def regenerate_statements(modeladmin, request, queryset):
+    ok = 0
     for stmt in queryset:
-        generate_statement(stmt.apartment, stmt.period)
+        try:
+            generate_statement(stmt.apartment, stmt.period)
+            ok += 1
+        except Exception as exc:  # report per-statement failure, don't abort the batch
+            modeladmin.message_user(
+                request,
+                f"Ошибка пересчёта ({stmt.apartment} {stmt.period:%Y-%m}): {exc}",
+                level=messages.ERROR,
+            )
+    if ok:
+        modeladmin.message_user(request, f"Пересчитано начислений: {ok}.")
 
 @admin.register(MonthlyStatement)
 class MonthlyStatementAdmin(admin.ModelAdmin):

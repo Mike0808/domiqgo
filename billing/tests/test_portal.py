@@ -75,9 +75,30 @@ def test_resubmit_with_backward_meter_preserves_prior_readings(tenant_setup):
 
 def test_tenant_cannot_see_other_apartment_history(tenant_setup):
     a, u = tenant_setup
+    MonthlyStatement.objects.create(apartment=a, period=date(2026, 5, 1), total=Decimal("123"))
     other = Apartment.objects.create(label="чужая кв")
     MonthlyStatement.objects.create(apartment=other, period=date(2026, 5, 1), total=Decimal("999"))
     c = _login(u)
     resp = c.get("/history/")
     assert resp.status_code == 200
-    assert b"999" not in resp.content
+    assert b"123" in resp.content        # own statement shown
+    assert b"999" not in resp.content    # foreign statement hidden
+
+def test_missing_sewage_tariff_shows_message_not_500(db):
+    from django.contrib.auth.models import User
+    from billing.models import Apartment, Tenant, Tariff, MeterReading, MonthlyStatement
+    period = _period_first_of_this_month()
+    baseline = date(period.year - 1, 12, 1) if period.month == 1 else date(period.year, period.month - 1, 1)
+    a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=True)
+    # cold + electricity tariffs exist, but NO sewage tariff
+    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
+    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
+    MeterReading.objects.create(apartment=a, period=baseline, meter="cold_water", value=Decimal("100"))
+    MeterReading.objects.create(apartment=a, period=baseline, meter="electricity_single", value=Decimal("1400"))
+    u = User.objects.create_user("petrov", password="pass12345")
+    Tenant.objects.create(user=u, apartment=a, full_name="Петров")
+    c = Client()
+    assert c.login(username="petrov", password="pass12345")
+    resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
+    assert resp.status_code == 200  # graceful re-render, not a 500
+    assert not MonthlyStatement.objects.filter(apartment=a, period=period).exists()
