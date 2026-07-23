@@ -1,0 +1,9 @@
+# Normalize text files to LF in the repo (they deploy to Linux).
+* text=auto eol=lf
+
+# Files consumed directly by Linux services must never get CRLF.
+deploy/Caddyfile      text eol=lf
+deploy/*.service      text eol=lf
+deploy/.env.example   text eol=lf
+requirements*.txt     text eol=lf
+*.sh                  text eol=lf
