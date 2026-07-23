@@ -1,5 +1,6 @@
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.db import transaction
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from .forms import MeterReadingForm
@@ -21,23 +22,21 @@ def current_month(request):
         if form.is_valid():
             existing = {r.meter: r for r in
                         MeterReading.objects.filter(apartment=apartment, period=period)}
-            # Save then attempt to generate; roll back the save if the math rejects it.
-            saved = []
-            for meter in meters:
-                value = form.cleaned_data[meter]
-                obj = existing.get(meter)
-                if obj:
-                    obj.value = value; obj.entered_by_tenant = True; obj.save()
-                else:
-                    obj = MeterReading.objects.create(
-                        apartment=apartment, period=period, meter=meter,
-                        value=value, entered_by_tenant=True)
-                saved.append(obj)
             try:
-                generate_statement(apartment, period)
+                with transaction.atomic():
+                    for meter in meters:
+                        value = form.cleaned_data[meter]
+                        obj = existing.get(meter)
+                        if obj:
+                            obj.value = value
+                            obj.entered_by_tenant = True
+                            obj.save()
+                        else:
+                            MeterReading.objects.create(
+                                apartment=apartment, period=period, meter=meter,
+                                value=value, entered_by_tenant=True)
+                    generate_statement(apartment, period)
             except ValueError as exc:
-                for obj in saved:
-                    obj.delete()
                 messages.error(request, f"Ошибка: показание уменьшилось. {exc}")
                 return render(request, "billing/current_month.html",
                               {"form": form, "statement": None, "period": period})

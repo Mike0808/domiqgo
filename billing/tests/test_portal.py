@@ -58,6 +58,21 @@ def test_backward_reading_is_rejected(tenant_setup):
     period = _period_first_of_this_month()
     assert not MeterReading.objects.filter(apartment=a, period=period).exists()
 
+def test_resubmit_with_backward_meter_preserves_prior_readings(tenant_setup):
+    from billing.models import MeterReading
+    a, u = tenant_setup
+    c = _login(u)
+    # First submit succeeds and persists this-month readings.
+    assert c.post("/", {"cold_water": "110", "electricity_single": "1500"}).status_code == 302
+    period = _period_first_of_this_month()
+    assert MeterReading.objects.get(apartment=a, period=period, meter="cold_water").value == Decimal("110")
+    # Re-submit: electricity now reads backward (1500 -> 1490 < baseline logic), cold_water is fine.
+    resp = c.post("/", {"cold_water": "115", "electricity_single": "1300"})
+    assert resp.status_code == 200  # rejected, re-rendered with error
+    # The previously-saved cold_water reading must NOT be destroyed by the rollback.
+    assert MeterReading.objects.filter(apartment=a, period=period, meter="cold_water").exists()
+    assert MeterReading.objects.get(apartment=a, period=period, meter="cold_water").value == Decimal("110")
+
 def test_tenant_cannot_see_other_apartment_history(tenant_setup):
     a, u = tenant_setup
     other = Apartment.objects.create(label="чужая кв")
