@@ -7,7 +7,8 @@ from billing.services.statements import generate_statement, meters_for
 pytestmark = pytest.mark.django_db
 
 def _tariffs(effective=date(2026, 7, 1)):
-    data = {"cold_water": "48.15", "hot_water": "205.30", "sewage": "36.40",
+    data = {"cold_water": "48.15", "hot_water_cold_component": "25.86",
+            "hot_water_heat_component": "2389.72", "sewage": "36.40",
             "electricity_single": "4.87"}
     for code, rate in data.items():
         Tariff.objects.create(utility_type=code, rate=Decimal(rate), effective_from=effective)
@@ -24,16 +25,20 @@ def test_meters_for_single_vs_dual():
     assert meters_for(a) == ["cold_water", "hot_water", "electricity_day", "electricity_night"]
 
 def test_generate_uses_previous_period_as_baseline():
-    a = Apartment.objects.create(label="кв", rent=Decimal("20000"), internet=Decimal("700"))
+    a = Apartment.objects.create(label="кв", rent=Decimal("20000"), internet=Decimal("700"),
+                                 gvs_heat_norm=Decimal("0.05229"))
     _tariffs()
     _readings(a, date(2026, 6, 1), "100", "50", "1400")
     _readings(a, date(2026, 7, 1), "110", "55", "1500")
 
     stmt = generate_statement(a, date(2026, 7, 1))
 
-    assert stmt.total == Decimal("23241.00")
+    assert stmt.total == Decimal("22968.59")
     by = {l["code"]: l for l in stmt.lines}
     assert by["cold_water"]["amount"] == "481.50"
+    assert by["hot_water_cold_component"]["amount"] == "129.30"    # 5 * 25.86
+    assert by["hot_water_heat_component"]["quantity"] == "0.26145"  # 5 * 0.05229 Гкал
+    assert by["hot_water_heat_component"]["amount"] == "624.79"
     assert by["sewage"]["amount"] == "546.00"
     assert by["rent"]["quantity"] is None
 
