@@ -4,9 +4,10 @@ Production stack:
 
 ```
 Internet ──▶ Caddy (:80/:443, auto Let's Encrypt TLS)
-               ├─ /media/*  ──▶ files on disk (/srv/domiqgo/media)
                └─ everything ─▶ gunicorn 127.0.0.1:8000 ──▶ Django
-                                   (WhiteNoise serves /static)
+                                   (WhiteNoise serves /static;
+                                    /media served by Django with auth —
+                                    uploads are private documents)
 ```
 
 The app lives at `/srv/domiqgo`. Adjust paths if you deploy elsewhere (keep the
@@ -87,15 +88,17 @@ it, or admin pages 500 with "Missing staticfiles manifest entry".
 
 ## 6. Permissions
 
-gunicorn (running as `www-data`) writes uploads; Caddy reads them. Give
-`www-data` ownership of the app dir and create the media dir:
+Keep the repo owned by your deploy user (so `git pull` and `pip install` keep
+working). gunicorn runs as `www-data` and only needs to *write* uploads, plus
+*read* the code, static files, and `.env`:
 
 ```bash
 sudo mkdir -p /srv/domiqgo/media
-sudo chown -R www-data:www-data /srv/domiqgo
+sudo chown -R www-data:www-data /srv/domiqgo/media
+# .env holds secrets: readable by www-data, not by everyone.
+sudo chgrp www-data /srv/domiqgo/.env
+sudo chmod 640 /srv/domiqgo/.env
 ```
-
-(Re-run `chown` after future `git pull`s if files come in owned by another user.)
 
 ## 7. gunicorn service
 
@@ -104,7 +107,9 @@ sudo cp deploy/gunicorn.service /etc/systemd/system/domiqgo.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now domiqgo
 sudo systemctl status domiqgo          # should be active (running)
-curl -I http://127.0.0.1:8000/login/   # should return 200
+# Host header required: ALLOWED_HOSTS only lists domiq-ufa.ru, so a bare
+# 127.0.0.1 request would get 400 DisallowedHost even on a healthy install.
+curl -I -H "Host: domiq-ufa.ru" http://127.0.0.1:8000/login/   # should return 200
 ```
 
 ## 8. Caddy (automatic HTTPS)
@@ -133,7 +138,6 @@ git pull
 .venv/bin/pip install -r requirements-prod.txt
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py collectstatic --noinput
-sudo chown -R www-data:www-data /srv/domiqgo
 sudo systemctl restart domiqgo
 ```
 

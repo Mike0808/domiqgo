@@ -21,6 +21,18 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-key-change-me")
 DEBUG = os.environ.get("DEBUG", "1") == "1"
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
+# Fail closed: a production process (DEBUG=0) must never silently run with the
+# dev secret key or fall back to the on-disk SQLite database — both mean the
+# .env file is missing or incomplete.
+if not DEBUG:
+    from django.core.exceptions import ImproperlyConfigured
+    if SECRET_KEY == "dev-insecure-key-change-me":
+        raise ImproperlyConfigured(
+            "DEBUG=0 but SECRET_KEY is the dev default — set SECRET_KEY in .env")
+    if not os.environ.get("DB_NAME"):
+        raise ImproperlyConfigured(
+            "DEBUG=0 but DB_NAME is unset — configure PostgreSQL in .env")
+
 
 # Application definition
 
@@ -148,6 +160,24 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 CSRF_TRUSTED_ORIGINS = [
     o.strip() for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()
 ]
+
+# Send warnings/errors (incl. unhandled-500 tracebacks) to stderr regardless of
+# DEBUG, so they land in journald under gunicorn. Django's default config mails
+# them to ADMINS (unconfigured) and silences the console when DEBUG=0.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simple": {"format": "{levelname} {asctime} {name} {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "simple"},
+    },
+    "root": {"handlers": ["console"], "level": "WARNING"},
+    "loggers": {
+        "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+    },
+}
 
 # Harden cookies and transport only in production (DEBUG=0). Left off in dev so
 # the http://localhost login still works.

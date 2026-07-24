@@ -10,21 +10,16 @@ domiq-ufa.ru {
 	# Compress responses.
 	encode zstd gzip
 
-	# Cap request bodies to match Django upload limits (receipts / agreements).
+	# Cap request bodies (receipt / agreement uploads).
 	request_body {
 		max_size 15MB
 	}
 
-	# User-uploaded files (receipts, rental agreements) served straight from
-	# disk — faster than routing them through Django. Keep this path in sync
-	# with MEDIA_ROOT / the deploy directory below.
-	handle_path /media/* {
-		root * /srv/domiqgo/media
-		file_server
-	}
-
-	# Everything else -> gunicorn (Django). WhiteNoise serves /static from
-	# inside the app, so no separate static handler is needed here.
+	# Everything -> gunicorn (Django). WhiteNoise serves /static from inside
+	# the app. /media (rental agreements, receipts) deliberately goes through
+	# Django too: those files are private and require an authenticated,
+	# per-tenant check (billing.views.media_file) — never serve them with a
+	# bare file_server.
 	handle {
 		reverse_proxy 127.0.0.1:8000
 	}

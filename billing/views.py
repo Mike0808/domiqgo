@@ -1,24 +1,45 @@
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db import transaction
+from django.http import Http404
 from django.shortcuts import redirect, render
 from django.utils import timezone
+from django.views.static import serve
 from .forms import MeterReadingForm
-from .models import MeterReading, MonthlyStatement
+from .models import Document, MeterReading, MonthlyStatement, Tenant
 from .services.calculation import MissingTariffError
 from .services.statements import meters_for, generate_statement
 
 def _current_period():
     return timezone.localdate().replace(day=1)
 
+def _tenant_for(request):
+    try:
+        return request.user.tenant
+    except Tenant.DoesNotExist:
+        return None
+
+def _no_tenant_response(request):
+    if request.user.is_staff:
+        return redirect("/admin/")
+    return render(request, "billing/no_tenant.html")
+
 @login_required
 def current_month(request):
-    tenant = request.user.tenant
+    tenant = _tenant_for(request)
+    if tenant is None:
+        return _no_tenant_response(request)
     apartment = tenant.apartment
     meters = meters_for(apartment)
     period = _current_period()
+    statement = MonthlyStatement.objects.filter(apartment=apartment, period=period).first()
+    locked = statement is not None and statement.status == MonthlyStatement.PAID
 
     if request.method == "POST":
+        if locked:
+            messages.error(request, "Месяц уже оплачен — изменить показания нельзя.")
+            return redirect("current_month")
         form = MeterReadingForm(request.POST, meters=meters)
         if form.is_valid():
             existing = {r.meter: r for r in
@@ -40,27 +61,46 @@ def current_month(request):
             except ValueError as exc:
                 messages.error(request, f"Ошибка: показание уменьшилось. {exc}")
                 return render(request, "billing/current_month.html",
-                              {"form": form, "statement": None, "period": period})
+                              {"form": form, "statement": None, "period": period,
+                               "locked": False})
             except MissingTariffError:
                 messages.error(request, "Тариф не настроен. Обратитесь к арендодателю.")
                 return render(request, "billing/current_month.html",
-                              {"form": form, "statement": None, "period": period})
+                              {"form": form, "statement": None, "period": period,
+                               "locked": False})
             messages.success(request, "Показания сохранены.")
             return redirect("current_month")
     else:
         form = MeterReadingForm(meters=meters)
 
-    statement = MonthlyStatement.objects.filter(apartment=apartment, period=period).first()
     return render(request, "billing/current_month.html",
-                  {"form": form, "statement": statement, "period": period})
+                  {"form": form, "statement": statement, "period": period,
+                   "locked": locked})
 
 @login_required
 def history(request):
-    apartment = request.user.tenant.apartment
-    statements = MonthlyStatement.objects.filter(apartment=apartment).order_by("-period")
+    tenant = _tenant_for(request)
+    if tenant is None:
+        return _no_tenant_response(request)
+    statements = MonthlyStatement.objects.filter(apartment=tenant.apartment).order_by("-period")
     return render(request, "billing/history.html", {"statements": statements})
 
 @login_required
 def documents(request):
-    docs = request.user.tenant.documents.all()
+    tenant = _tenant_for(request)
+    if tenant is None:
+        return _no_tenant_response(request)
+    docs = tenant.documents.all()
     return render(request, "billing/documents.html", {"documents": docs})
+
+@login_required
+def media_file(request, path):
+    """Serve an uploaded file only to its owner (or staff).
+
+    All /media URLs route here — nothing under MEDIA_ROOT is ever served
+    without authentication (rental agreements contain passport data).
+    """
+    if not request.user.is_staff and not Document.objects.filter(
+            file=path, tenant__user=request.user).exists():
+        raise Http404
+    return serve(request, path, document_root=settings.MEDIA_ROOT)

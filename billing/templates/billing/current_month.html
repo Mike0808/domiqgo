@@ -2,6 +2,12 @@
 {% block title %}Начисление за месяц{% endblock %}
 {% block content %}
 <h2>Начисление за {{ period|date:"F Y" }}</h2>
+{% if locked %}
+<div class="card">
+  <h3>Внести показания</h3>
+  <p>Месяц оплачен — изменение показаний закрыто.</p>
+</div>
+{% else %}
 <div class="card">
   <h3>Внести показания</h3>
   <form method="post">
@@ -14,6 +20,7 @@
     <button type="submit">Сохранить показания</button>
   </form>
 </div>
+{% endif %}
 {% if statement %}
 <div class="card">
   <h3>К оплате

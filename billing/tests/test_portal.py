@@ -84,6 +84,37 @@ def test_tenant_cannot_see_other_apartment_history(tenant_setup):
     assert b"123" in resp.content        # own statement shown
     assert b"999" not in resp.content    # foreign statement hidden
 
+def test_paid_month_locks_readings(tenant_setup):
+    a, u = tenant_setup
+    period = _period_first_of_this_month()
+    MonthlyStatement.objects.create(apartment=a, period=period, total=Decimal("500"),
+                                    status=MonthlyStatement.PAID)
+    c = _login(u)
+    resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
+    assert resp.status_code == 302               # rejected with a message, not applied
+    assert not MeterReading.objects.filter(apartment=a, period=period).exists()
+    stmt = MonthlyStatement.objects.get(apartment=a, period=period)
+    assert stmt.status == MonthlyStatement.PAID
+    assert stmt.total == Decimal("500")          # settled amount untouched
+    page = c.get("/")
+    assert "изменение показаний закрыто" in page.content.decode()
+
+def test_staff_without_tenant_profile_redirects_to_admin(db):
+    User.objects.create_superuser("boss", "boss@example.com", "pass12345")
+    c = Client()
+    assert c.login(username="boss", password="pass12345")
+    resp = c.get("/")
+    assert resp.status_code == 302
+    assert resp.headers["Location"].startswith("/admin/")
+
+def test_user_without_tenant_profile_gets_friendly_page(db):
+    User.objects.create_user("nobody", password="pass12345")
+    c = Client()
+    assert c.login(username="nobody", password="pass12345")
+    resp = c.get("/")
+    assert resp.status_code == 200               # not a 500
+    assert "не привязана" in resp.content.decode()
+
 def test_missing_sewage_tariff_shows_message_not_500(db):
     from django.contrib.auth.models import User
     from billing.models import Apartment, Tenant, Tariff, MeterReading, MonthlyStatement

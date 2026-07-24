@@ -7,6 +7,9 @@ After=network.target
 
 [Service]
 Type=notify
+# Refuse to start without the env file: without it Django would either boot in
+# DEBUG mode or (with the fail-closed settings checks) crash less legibly.
+AssertPathExists=/srv/domiqgo/.env
 User=www-data
 Group=www-data
 WorkingDirectory=/srv/domiqgo
