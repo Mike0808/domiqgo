@@ -1290,4 +1290,4 @@ git commit -m "feat: admin approval console — pending queue, confirm/reject, r
 
 - Create the bot with **@BotFather**, put the token in `.env` as `TELEGRAM_BOT_TOKEN`, and set any long random `TELEGRAM_WEBHOOK_SECRET`.
 - Dev: `python manage.py run_telegram_polling`. Prod (after deploy): `python manage.py set_telegram_webhook https://domiq-ufa.ru/bot/telegram/webhook/`.
-- Follow-up to consider in 2B: receipt files under `/media` are currently reachable by anyone with the URL — add per-tenant access control when the tenant-facing «Мои чеки» view is built.
+- Receipt files under `/media` are private: all `/media` requests route through the authenticated `billing.views.media_file` view, which currently restricts receipts to staff (viewable via the admin preview). Follow-up for 2B: extend access to the owning tenant when the tenant-facing «Мои чеки» view is built.

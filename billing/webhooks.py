@@ -1,10 +1,13 @@
 import hmac
 import json
+import logging
 from django.conf import settings
 from django.http import HttpResponse, HttpResponseForbidden
 from django.views.decorators.csrf import csrf_exempt
 from .messengers.telegram import TelegramAdapter
 from .services.bot import handle_update
+
+logger = logging.getLogger(__name__)
 
 @csrf_exempt
 def telegram_webhook(request):
@@ -19,5 +22,8 @@ def telegram_webhook(request):
         raw = json.loads(request.body.decode("utf-8"))
     except (ValueError, UnicodeDecodeError):
         return HttpResponse(status=400)
-    handle_update(TelegramAdapter(), raw)
+    try:
+        handle_update(TelegramAdapter(), raw)
+    except Exception:
+        logger.exception("telegram update processing failed")
     return HttpResponse("ok")

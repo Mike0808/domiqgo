@@ -30,5 +30,8 @@ class Command(BaseCommand):
             try:
                 offset = poll_once(adapter, offset)
             except requests.RequestException as exc:
-                self.stderr.write(f"poll error: {exc}")
+                msg = str(exc)
+                if adapter.token:
+                    msg = msg.replace(adapter.token, "***")
+                self.stderr.write("poll error: " + msg)
                 time.sleep(3)

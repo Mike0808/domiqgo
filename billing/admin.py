@@ -61,7 +61,7 @@ def confirm_payments(modeladmin, request, queryset):
 @admin.action(description="Отклонить платёж")
 def reject_payments(modeladmin, request, queryset):
     n = 0
-    for p in queryset.exclude(status=Payment.CONFIRMED):
+    for p in queryset.filter(status=Payment.PENDING):
         reject_payment(p); n += 1
     modeladmin.message_user(request, f"Отклонено платежей: {n}.", level=messages.WARNING)
 

@@ -51,6 +51,19 @@ def test_webhook_bad_json_returns_400(settings):
                          HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="s3cret")
     assert resp.status_code == 400
 
+def test_webhook_swallows_handler_exception(settings, monkeypatch):
+    settings.TELEGRAM_WEBHOOK_SECRET = "s3cret"
+    import billing.webhooks as webhooks
+
+    def _boom(adapter, raw):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(webhooks, "handle_update", _boom)
+    body = json.dumps({"message": {"chat": {"id": 555}, "text": "hi"}})
+    resp = Client().post(WEBHOOK, data=body, content_type="application/json",
+                         HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="s3cret")
+    assert resp.status_code == 200
+
 def test_unset_secret_rejects_all_requests(settings):
     settings.TELEGRAM_WEBHOOK_SECRET = ""
     body = json.dumps({"message": {"chat": {"id": 555}, "text": "hi"}})
