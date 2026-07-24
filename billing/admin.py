@@ -1,9 +1,11 @@
 from django.contrib import admin
 from django.contrib import messages
+from django.utils.html import format_html
 from .models import (
-    Apartment, Tenant, Tariff, MeterReading, MonthlyStatement, Document,
+    Apartment, Tenant, Tariff, MeterReading, MonthlyStatement, Document, Payment,
 )
 from .services.statements import generate_statement
+from .services.intake import confirm_payment, reject_payment
 
 @admin.register(Apartment)
 class ApartmentAdmin(admin.ModelAdmin):
@@ -49,12 +51,66 @@ def regenerate_statements(modeladmin, request, queryset):
     if ok:
         modeladmin.message_user(request, f"Пересчитано начислений: {ok}.")
 
+@admin.action(description="Подтвердить оплату")
+def confirm_payments(modeladmin, request, queryset):
+    n = 0
+    for p in queryset.filter(status=Payment.PENDING):
+        confirm_payment(p); n += 1
+    modeladmin.message_user(request, f"Подтверждено платежей: {n}.")
+
+@admin.action(description="Отклонить платёж")
+def reject_payments(modeladmin, request, queryset):
+    n = 0
+    for p in queryset.exclude(status=Payment.CONFIRMED):
+        reject_payment(p); n += 1
+    modeladmin.message_user(request, f"Отклонено платежей: {n}.", level=messages.WARNING)
+
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ("statement", "source", "status", "submitted_at", "preview")
+    list_filter = ("status", "source")
+    date_hierarchy = "submitted_at"
+    readonly_fields = ("preview", "submitted_at")
+    actions = [confirm_payments, reject_payments]
+
+    @admin.display(description="Чек")
+    def preview(self, obj):
+        if not obj.file:
+            return "—"
+        url = obj.file.url
+        if url.lower().endswith(".pdf"):
+            return format_html('<a href="{}" target="_blank">PDF-чек</a>', url)
+        return format_html(
+            '<a href="{}" target="_blank"><img src="{}" style="max-height:120px"></a>', url, url)
+
+    def _delete_with_file(self, payment):
+        payment.file.delete(save=False)
+        stmt = payment.statement
+        payment.delete()
+        if (stmt.status == MonthlyStatement.PENDING
+                and not stmt.payments.filter(status=Payment.PENDING).exists()):
+            stmt.status = MonthlyStatement.UNPAID
+            stmt.save(update_fields=["status"])
+
+    def delete_model(self, request, obj):
+        self._delete_with_file(obj)
+
+    def delete_queryset(self, request, queryset):
+        for obj in queryset:
+            self._delete_with_file(obj)
+
+class PaymentInline(admin.TabularInline):
+    model = Payment
+    extra = 0
+    readonly_fields = ("source", "status", "submitted_at")
+
 @admin.register(MonthlyStatement)
 class MonthlyStatementAdmin(admin.ModelAdmin):
     list_display = ("apartment", "period", "total", "status")
     list_filter = ("status", "apartment")
     date_hierarchy = "period"
     actions = [regenerate_statements]
+    inlines = [PaymentInline]
 
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
