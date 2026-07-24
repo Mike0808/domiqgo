@@ -74,10 +74,38 @@ class Tariff(models.Model):
     def __str__(self):
         return f"{self.get_utility_type_display()} — {self.rate} (с {self.effective_from})"
 
+# Meter codes shared by Meter.kind, MeterReading.meter and the calculation core.
+METER_KIND_CHOICES = [
+    ("cold_water", "Холодная вода"),
+    ("hot_water", "Горячая вода"),
+    ("electricity_single", "Электроэнергия"),
+    ("electricity_day", "Электроэнергия (день)"),
+    ("electricity_night", "Электроэнергия (ночь)"),
+]
+
+class Meter(models.Model):
+    """Физический прибор учёта: номер и показание, зафиксированные в акте
+    при подписании договора. Начальное показание — база первого месяца."""
+    apartment = models.ForeignKey(Apartment, on_delete=models.CASCADE, related_name="meters")
+    kind = models.CharField("Вид", max_length=32, choices=METER_KIND_CHOICES)
+    serial_number = models.CharField("Заводской номер", max_length=64, blank=True)
+    initial_value = models.DecimalField("Начальное показание", max_digits=12, decimal_places=3)
+    initial_date = models.DateField("Дата фиксации", null=True, blank=True,
+                                    help_text="Дата акта / подписания договора.")
+
+    class Meta:
+        verbose_name = "Счётчик"
+        verbose_name_plural = "Счётчики"
+        unique_together = [("apartment", "kind")]
+
+    def __str__(self):
+        n = f" № {self.serial_number}" if self.serial_number else ""
+        return f"{self.get_kind_display()}{n}"
+
 class MeterReading(models.Model):
     apartment = models.ForeignKey(Apartment, on_delete=models.CASCADE, related_name="readings")
     period = models.DateField("Период")
-    meter = models.CharField("Счётчик", max_length=32)
+    meter = models.CharField("Счётчик", max_length=32, choices=METER_KIND_CHOICES)
     value = models.DecimalField("Показание", max_digits=12, decimal_places=3)
     entered_by_tenant = models.BooleanField(default=False)
 

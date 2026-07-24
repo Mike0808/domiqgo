@@ -148,3 +148,39 @@ def test_missing_sewage_tariff_shows_message_not_500(db):
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
     assert resp.status_code == 200  # graceful re-render, not a 500
     assert not MonthlyStatement.objects.filter(apartment=a, period=period).exists()
+
+def test_first_month_uses_contract_initial_values(db):
+    from billing.models import Meter
+    a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
+    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
+    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
+    Meter.objects.create(apartment=a, kind="cold_water", serial_number="CW-77",
+                         initial_value=Decimal("100"))
+    Meter.objects.create(apartment=a, kind="electricity_single", serial_number="E-77",
+                         initial_value=Decimal("1400"))
+    u = User.objects.create_user("newbie", password="pass12345")
+    Tenant.objects.create(user=u, apartment=a, full_name="Новосёл")
+    c = Client()
+    assert c.login(username="newbie", password="pass12345")
+    # serial numbers are visible on the form
+    page = c.get("/")
+    assert "CW-77" in page.content.decode()
+    # first-ever submission bills from the contract values, not from zero
+    resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
+    assert resp.status_code == 302
+    stmt = MonthlyStatement.objects.get(apartment=a)
+    assert stmt.total == Decimal("968.50")
+
+def test_missing_baseline_shows_message_not_bill_from_zero(db):
+    a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
+    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
+    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
+    # no Meter rows, no prior readings
+    u = User.objects.create_user("orphan", password="pass12345")
+    Tenant.objects.create(user=u, apartment=a, full_name="Без базы")
+    c = Client()
+    assert c.login(username="orphan", password="pass12345")
+    resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
+    assert resp.status_code == 200  # friendly re-render, not a bill from zero
+    assert "Начальные показания не заданы" in resp.content.decode()
+    assert not MonthlyStatement.objects.filter(apartment=a).exists()

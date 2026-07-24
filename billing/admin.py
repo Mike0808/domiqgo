@@ -2,16 +2,21 @@ from django.contrib import admin
 from django.contrib import messages
 from django.utils.html import format_html
 from .models import (
-    Apartment, Tenant, Tariff, MeterReading, MonthlyStatement, Document, Payment,
+    Apartment, Meter, Tenant, Tariff, MeterReading, MonthlyStatement, Document, Payment,
 )
 from .services.statements import generate_statement
 from .services.intake import confirm_payment, reject_payment, _revert_if_no_pending
+
+class MeterInline(admin.TabularInline):
+    model = Meter
+    extra = 0
 
 @admin.register(Apartment)
 class ApartmentAdmin(admin.ModelAdmin):
     list_display = ("label", "electricity_meter_type", "rent", "internet")
     list_filter = ("electricity_meter_type",)
     search_fields = ("label",)
+    inlines = [MeterInline]
 
 class DocumentInline(admin.TabularInline):
     model = Document
@@ -34,6 +39,17 @@ class MeterReadingAdmin(admin.ModelAdmin):
     list_display = ("apartment", "period", "meter", "value", "entered_by_tenant")
     list_filter = ("meter", "apartment")
     date_hierarchy = "period"
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        try:
+            generate_statement(obj.apartment, obj.period)
+            self.message_user(request, "Начисление за период пересчитано.")
+        except Exception as exc:
+            self.message_user(
+                request,
+                f"Показание сохранено, но начисление не пересчитано: {exc}",
+                level=messages.WARNING)
 
 @admin.action(description="Пересчитать начисления")
 def regenerate_statements(modeladmin, request, queryset):

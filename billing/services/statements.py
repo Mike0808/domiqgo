@@ -2,6 +2,9 @@ from datetime import date
 from .calculation import ApartmentConfig, MeterType, compute_statement
 from ..models import Apartment, Tariff, MeterReading, MonthlyStatement
 
+class MissingBaselineError(Exception):
+    """No previous reading and no contract-fixed initial value for a meter."""
+
 def meters_for(apartment) -> list[str]:
     meters = []
     if apartment.has_cold_water:
@@ -18,13 +21,27 @@ def _readings_map(apartment, period) -> dict:
     return {r.meter: r.value
             for r in MeterReading.objects.filter(apartment=apartment, period=period)}
 
-def _previous_readings(apartment, period) -> dict:
-    prev = (MeterReading.objects
-            .filter(apartment=apartment, period__lt=period)
-            .order_by("-period").first())
-    if prev is None:
-        return {}
-    return _readings_map(apartment, prev.period)
+def _previous_readings(apartment, period, meters) -> dict:
+    """Baseline per meter: the latest reading before `period`, else the
+    contract-fixed initial value from the apartment's Meter. A meter with
+    neither is an error — billing from an implicit 0 overcharges the tenant.
+    """
+    initials = {m.kind: m.initial_value for m in apartment.meters.all()}
+    result, missing = {}, []
+    for meter in meters:
+        r = (MeterReading.objects
+             .filter(apartment=apartment, meter=meter, period__lt=period)
+             .order_by("-period").first())
+        if r is not None:
+            result[meter] = r.value
+        elif meter in initials:
+            result[meter] = initials[meter]
+        else:
+            missing.append(meter)
+    if missing:
+        raise MissingBaselineError(
+            "Нет начальных показаний для: " + ", ".join(missing))
+    return result
 
 def _tariffs_for(period) -> dict:
     result = {}
@@ -55,7 +72,7 @@ def generate_statement(apartment, period: date) -> MonthlyStatement:
         gvs_heat_norm=apartment.gvs_heat_norm,
     )
     current = _readings_map(apartment, period)
-    previous = _previous_readings(apartment, period)
+    previous = _previous_readings(apartment, period, meters_for(apartment))
     tariffs = _tariffs_for(period)
     lines, total = compute_statement(config, current, previous, tariffs)
     stmt, _created = MonthlyStatement.objects.update_or_create(
