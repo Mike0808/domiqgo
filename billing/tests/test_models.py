@@ -36,3 +36,14 @@ def test_tenant_links_user_and_apartment():
     assert t.apartment == a
     assert u.tenant == t
     assert t.messenger_platform == ""   # Plan 2 hook present but empty
+
+def test_meter_unique_per_apartment_and_kind(db):
+    from decimal import Decimal
+    from django.db import IntegrityError
+    import pytest as _pytest
+    from billing.models import Apartment, Meter
+    a = Apartment.objects.create(label="кв")
+    Meter.objects.create(apartment=a, kind="cold_water", serial_number="X-1",
+                         initial_value=Decimal("100"))
+    with _pytest.raises(IntegrityError):
+        Meter.objects.create(apartment=a, kind="cold_water", initial_value=Decimal("0"))

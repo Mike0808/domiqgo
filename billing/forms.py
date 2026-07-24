@@ -2,8 +2,12 @@ from decimal import Decimal
 from django import forms
 
 class MeterReadingForm(forms.Form):
-    """Dynamic form: one DecimalField per meter this apartment uses."""
-    def __init__(self, *args, meters=None, **kwargs):
+    """Dynamic form: one DecimalField per meter this apartment uses.
+
+    `serials` maps meter code -> заводской номер; when present, the number is
+    appended to the label so the tenant knows which physical device to read.
+    """
+    def __init__(self, *args, meters=None, serials=None, **kwargs):
         super().__init__(*args, **kwargs)
         labels = {
             "cold_water": "Холодная вода (м³)",
@@ -12,6 +16,10 @@ class MeterReadingForm(forms.Form):
             "electricity_day": "Электроэнергия день (кВт·ч)",
             "electricity_night": "Электроэнергия ночь (кВт·ч)",
         }
+        serials = serials or {}
         for meter in (meters or []):
+            label = labels[meter]
+            if serials.get(meter):
+                label = f"{label} — счётчик № {serials[meter]}"
             self.fields[meter] = forms.DecimalField(
-                label=labels[meter], min_value=Decimal("0"), max_digits=12, decimal_places=3)
+                label=label, min_value=Decimal("0"), max_digits=12, decimal_places=3)
