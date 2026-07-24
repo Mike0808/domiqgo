@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 import os
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,16 +23,11 @@ DEBUG = os.environ.get("DEBUG", "1") == "1"
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
 # Fail closed: a production process (DEBUG=0) must never silently run with the
-# dev secret key or fall back to the on-disk SQLite database — both mean the
-# .env file is missing or incomplete.
+# dev secret key — that means the .env file is missing or incomplete.
 if not DEBUG:
-    from django.core.exceptions import ImproperlyConfigured
     if SECRET_KEY == "dev-insecure-key-change-me":
         raise ImproperlyConfigured(
             "DEBUG=0 but SECRET_KEY is the dev default — set SECRET_KEY in .env")
-    if not os.environ.get("DB_NAME"):
-        raise ImproperlyConfigured(
-            "DEBUG=0 but DB_NAME is unset — configure PostgreSQL in .env")
 
 
 # Application definition
@@ -86,7 +82,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-if os.environ.get("DB_NAME"):
+# DB_ENGINE selects the adapter: "sqlite" (default — the MVP runs SQLite even
+# in production; the VPS is 1 CPU / 1 GB) or "postgres" (set the DB_* vars and
+# install the postgres extra: uv sync --extra postgres).
+DB_ENGINE = os.environ.get("DB_ENGINE", "sqlite")
+if DB_ENGINE == "postgres":
     DATABASES = {"default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.environ["DB_NAME"],
@@ -95,11 +95,24 @@ if os.environ.get("DB_NAME"):
         "HOST": os.environ.get("DB_HOST", "localhost"),
         "PORT": os.environ.get("DB_PORT", "5432"),
     }}
-else:
+elif DB_ENGINE == "sqlite":
     DATABASES = {"default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        # In Docker this points into the persistent volume (/data/db.sqlite3).
+        "NAME": os.environ.get("SQLITE_PATH", BASE_DIR / "db.sqlite3"),
+        "OPTIONS": {
+            # WAL lets gunicorn workers read while one writes; IMMEDIATE
+            # transactions + busy_timeout avoid "database is locked" errors.
+            "init_command": (
+                "PRAGMA journal_mode=WAL;"
+                "PRAGMA synchronous=NORMAL;"
+                "PRAGMA busy_timeout=5000;"
+            ),
+            "transaction_mode": "IMMEDIATE",
+        },
     }}
+else:
+    raise ImproperlyConfigured(f"Unknown DB_ENGINE: {DB_ENGINE!r} (sqlite|postgres)")
 
 
 # Password validation
@@ -140,7 +153,8 @@ STORAGES = {
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
 MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "media"
+# In Docker this points into the persistent volume (/data/media).
+MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / "media"))
 
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "current_month"

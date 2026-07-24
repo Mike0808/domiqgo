@@ -1,152 +1,122 @@
-# Deployment — domiq-ufa.ru (Ubuntu + Caddy + gunicorn + PostgreSQL)
+# Deployment — domiq-ufa.ru
 
-Production stack:
+MVP target: a 1 CPU / 1 GB RAM / 15 GB NVMe VPS. The stack is Docker Compose,
+SQLite (WAL) as the database, and Caddy for automatic Let's Encrypt TLS.
 
 ```
-Internet ──▶ Caddy (:80/:443, auto Let's Encrypt TLS)
-               └─ everything ─▶ gunicorn 127.0.0.1:8000 ──▶ Django
-                                   (WhiteNoise serves /static;
-                                    /media served by Django with auth —
-                                    uploads are private documents)
+Internet ──▶ caddy container (:80/:443, auto Let's Encrypt)
+               ├─ domiq-ufa.ru      ─▶ web container (gunicorn :8000, Django)
+               │                        WhiteNoise serves /static
+               │                        /media served by Django with auth
+               │                        SQLite + uploads on the `data` volume
+               └─ vpn.domiq-ufa.ru  ─▶ wg-easy container UI (:51821)
+WireGuard itself (51820/udp) stays published directly by the wg-easy container.
 ```
-
-The app lives at `/srv/domiqgo`. Adjust paths if you deploy elsewhere (keep the
-Caddyfile `root`, the systemd `WorkingDirectory`/`ExecStart`, and `MEDIA_ROOT`
-in agreement).
 
 ## Prerequisites
 
-- An Ubuntu VPS with a public IP.
-- **DNS:** an `A` record for `domiq-ufa.ru` pointing at that IP. Verify:
-  `dig +short domiq-ufa.ru` returns your server IP.
-- **Firewall:** ports **80** and **443** open (80 is required for the ACME
-  HTTP-01 challenge Caddy uses to get the certificate).
+- Docker Engine + the compose plugin (`docker compose version`).
+- **DNS:** `A` records for **domiq-ufa.ru** and **vpn.domiq-ufa.ru** pointing
+  at the server IP. Verify: `dig +short domiq-ufa.ru vpn.domiq-ufa.ru`.
+- **Firewall:** 80 and 443 open (80 is required for the ACME HTTP-01
+  challenge), 51820/udp open for WireGuard. **51821 must NOT be reachable
+  from the internet** once Caddy fronts it (see wg-easy wiring below).
 
-## 1. System packages
-
-```bash
-sudo apt update
-sudo apt install -y python3-venv python3-pip postgresql
-```
-
-Install Caddy (official repo):
+## 1. Get the code and configure
 
 ```bash
-sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-  | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-  | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-sudo apt update
-sudo apt install -y caddy
-```
-
-## 2. PostgreSQL database
-
-```bash
-sudo -u postgres psql <<'SQL'
-CREATE DATABASE domiqgo;
-CREATE USER domiqgo WITH PASSWORD 'replace-with-db-password';
-GRANT ALL PRIVILEGES ON DATABASE domiqgo TO domiqgo;
-ALTER DATABASE domiqgo OWNER TO domiqgo;
-SQL
-```
-
-## 3. Application code
-
-```bash
-sudo mkdir -p /srv/domiqgo
-sudo chown "$USER":"$USER" /srv/domiqgo
 git clone https://github.com/Mike0808/domiqgo.git /srv/domiqgo
 cd /srv/domiqgo
-
-python3 -m venv .venv
-.venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r requirements-prod.txt
-```
-
-## 4. Environment file
-
-```bash
 cp deploy/.env.example .env
 # Generate a real secret key:
-.venv/bin/python -c "import secrets; print(secrets.token_urlsafe(64))"
-# Edit .env: paste SECRET_KEY, set DB_PASSWORD, keep DEBUG=0.
-nano .env
+python3 -c "import secrets; print(secrets.token_urlsafe(64))"
+nano .env   # paste SECRET_KEY, keep DEBUG=0 and DB_ENGINE=sqlite
 ```
 
-## 5. Migrate and collect static
+## 2. Build and start
 
 ```bash
-.venv/bin/python manage.py migrate
-.venv/bin/python manage.py collectstatic --noinput
-.venv/bin/python manage.py createsuperuser   # your landlord admin login
+docker compose up -d --build
+docker compose logs -f caddy   # watch the Let's Encrypt certificates arrive
 ```
 
-`collectstatic` writes the hashed static manifest WhiteNoise needs — don't skip
-it, or admin pages 500 with "Missing staticfiles manifest entry".
-
-## 6. Permissions
-
-Keep the repo owned by your deploy user (so `git pull` and `pip install` keep
-working). gunicorn runs as `www-data` and only needs to *write* uploads, plus
-*read* the code, static files, and `.env`:
+First start runs migrations automatically (entrypoint). Create the landlord
+admin account:
 
 ```bash
-sudo mkdir -p /srv/domiqgo/media
-sudo chown -R www-data:www-data /srv/domiqgo/media
-# .env holds secrets: readable by www-data, not by everyone.
-sudo chgrp www-data /srv/domiqgo/.env
-sudo chmod 640 /srv/domiqgo/.env
+docker compose exec web python manage.py createsuperuser
 ```
 
-## 7. gunicorn service
+Check: `https://domiq-ufa.ru/login/` (tenant portal) and
+`https://domiq-ufa.ru/admin/` (landlord back-office).
+
+## 3. Wire up the existing wg-easy container
+
+The wireguard/wg-easy container is preinstalled on the host and is *not*
+managed by this compose file. Give Caddy a private path to its UI:
 
 ```bash
-sudo cp deploy/gunicorn.service /etc/systemd/system/domiqgo.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now domiqgo
-sudo systemctl status domiqgo          # should be active (running)
-# Host header required: ALLOWED_HOSTS only lists domiq-ufa.ru, so a bare
-# 127.0.0.1 request would get 400 DisallowedHost even on a healthy install.
-curl -I -H "Host: domiq-ufa.ru" http://127.0.0.1:8000/login/   # should return 200
+docker network connect domiqgo_default wg-easy
+docker compose restart caddy
 ```
 
-## 8. Caddy (automatic HTTPS)
+Then **stop publishing the UI port publicly** — recreate the wg-easy
+container without the `-p 51821:51821` mapping (keep `51820:51820/udp`).
+Docker's published ports bypass ufw, so as long as 51821 is published,
+firewall rules will NOT protect it.
 
-```bash
-sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
-sudo mkdir -p /var/log/caddy && sudo chown caddy:caddy /var/log/caddy
-sudo systemctl reload caddy
-sudo journalctl -u caddy -f            # watch it obtain the Let's Encrypt cert
-```
+`https://vpn.domiq-ufa.ru` now serves the wg-easy login over TLS. Caddy adds
+only TLS — keep a strong wg-easy password.
 
-On first load of `https://domiq-ufa.ru` Caddy completes the ACME challenge and
-installs the certificate. Renewal is automatic — nothing further to do.
-
-## 9. Verify
-
-- Visit `https://domiq-ufa.ru/login/` — valid padlock, tenant login page.
-- Visit `https://domiq-ufa.ru/admin/` — your landlord back-office.
-- `http://domiq-ufa.ru` redirects to `https://` (Caddy does this automatically).
+If you'd rather leave wg-easy untouched (UI still published on the host),
+switch the upstream in `deploy/docker/Caddyfile` to
+`host.docker.internal:51821` and restart caddy — but then firewall 51821 at
+the provider level, not with ufw.
 
 ## Updating after a code change
 
 ```bash
 cd /srv/domiqgo
 git pull
-.venv/bin/pip install -r requirements-prod.txt
-.venv/bin/python manage.py migrate
-.venv/bin/python manage.py collectstatic --noinput
-sudo systemctl restart domiqgo
+docker compose up -d --build
+```
+
+Migrations and collectstatic run automatically (entrypoint / image build).
+
+## Backups (SQLite + uploads)
+
+Everything that matters lives on the `data` volume: `/data/db.sqlite3` and
+`/data/media/`. Online-safe database snapshot:
+
+```bash
+docker compose exec web python -c "import sqlite3; sqlite3.connect('/data/db.sqlite3').backup(sqlite3.connect('/data/db-backup.sqlite3'))"
+docker compose cp web:/data/db-backup.sqlite3 ./backups/db-$(date +%F).sqlite3
+docker compose cp web:/data/media ./backups/media-$(date +%F)
+```
+
+Put the first two lines in a cron job; 15 GB NVMe holds years of this data.
+
+## Moving to PostgreSQL later
+
+Set `DB_ENGINE=postgres` and the `DB_*` vars in `.env`, add a postgres
+service (or managed DB), and add `--extra postgres` to the `uv sync` line in
+the Dockerfile. No code changes.
+
+## Local development (uv)
+
+```powershell
+uv sync                                  # creates .venv with dev deps (pytest)
+uv run python manage.py migrate
+uv run python manage.py runserver
+uv run pytest
 ```
 
 ## Frontend CSS build (development machines only)
 
 The stylesheet `billing/static/billing/css/app.css` is **generated** by the
 Tailwind standalone CLI (no Node needed) and **committed**, so servers never
-build it — `collectstatic` just picks it up. Rebuild it whenever templates,
-`static_src/input.css`, or `tailwind.config.js` change:
+build it. Rebuild whenever templates, `static_src/input.css`, or
+`tailwind.config.js` change:
 
 ```powershell
 # one-time: download the CLI (~40 MB) — Windows dev machine
@@ -158,12 +128,24 @@ tools\tailwindcss.exe -i static_src\input.css -o billing\static\billing\css\app.
 htmx, Alpine.js, and the PT Sans/PT Mono fonts are vendored under
 `billing/static/billing/` — the site makes no CDN requests.
 
+## Bare-metal alternative (no Docker)
+
+`deploy/gunicorn.service` (systemd) and `deploy/Caddyfile` (host Caddy) are
+kept for a non-Docker install: `uv sync --no-dev` in /srv/domiqgo, copy the
+unit, `manage.py migrate && collectstatic`, reload Caddy. The Docker path
+above is the recommended one for the MVP VPS.
+
 ## Troubleshooting
 
 - **Cert won't issue:** DNS not pointing here yet, or port 80 blocked. Check
-  `dig +short domiq-ufa.ru` and your firewall; watch `journalctl -u caddy -f`.
-- **CSRF verification failed on login:** `CSRF_TRUSTED_ORIGINS` in `.env` must
-  include `https://domiq-ufa.ru` (scheme included).
-- **502 from Caddy:** gunicorn isn't running — `systemctl status domiqgo` and
-  `journalctl -u domiqgo -e`.
-- **Static/admin pages 500:** re-run `collectstatic --noinput`.
+  `dig +short domiq-ufa.ru` and watch `docker compose logs -f caddy`.
+- **CSRF verification failed on login:** `CSRF_TRUSTED_ORIGINS` in `.env`
+  must include `https://domiq-ufa.ru` (scheme included).
+- **502 from Caddy:** web container isn't running —
+  `docker compose ps`, `docker compose logs web`.
+- **`database is locked`:** shouldn't happen (WAL + busy_timeout are on);
+  if it does, check for a stray second stack writing to the same volume.
+- **wg-easy UI unreachable via vpn.domiq-ufa.ru:** the wg-easy container
+  must be on the compose network — `docker network inspect domiqgo_default`
+  should list it; re-run the `docker network connect` command after the
+  wg-easy container is recreated.
