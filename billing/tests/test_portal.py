@@ -97,7 +97,22 @@ def test_paid_month_locks_readings(tenant_setup):
     assert stmt.status == MonthlyStatement.PAID
     assert stmt.total == Decimal("500")          # settled amount untouched
     page = c.get("/")
-    assert "изменение показаний закрыто" in page.content.decode()
+    assert "Показания заблокированы" in page.content.decode()
+
+def test_pending_month_locks_readings(tenant_setup):
+    a, u = tenant_setup
+    period = _period_first_of_this_month()
+    MonthlyStatement.objects.create(apartment=a, period=period, total=Decimal("500"),
+                                    status=MonthlyStatement.PENDING)
+    c = _login(u)
+    resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
+    assert resp.status_code == 302               # rejected with a message, not applied
+    assert not MeterReading.objects.filter(apartment=a, period=period).exists()
+    stmt = MonthlyStatement.objects.get(apartment=a, period=period)
+    assert stmt.status == MonthlyStatement.PENDING
+    assert stmt.total == Decimal("500")          # amount under review untouched
+    page = c.get("/")
+    assert "Показания заблокированы" in page.content.decode()
 
 def test_staff_without_tenant_profile_redirects_to_admin(db):
     User.objects.create_superuser("boss", "boss@example.com", "pass12345")

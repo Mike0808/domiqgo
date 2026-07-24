@@ -34,11 +34,11 @@ def current_month(request):
     meters = meters_for(apartment)
     period = _current_period()
     statement = MonthlyStatement.objects.filter(apartment=apartment, period=period).first()
-    locked = statement is not None and statement.status == MonthlyStatement.PAID
+    locked = statement is not None and statement.status in (MonthlyStatement.PAID, MonthlyStatement.PENDING)
 
     if request.method == "POST":
         if locked:
-            messages.error(request, "Месяц уже оплачен — изменить показания нельзя.")
+            messages.error(request, "Показания заблокированы: месяц оплачен или платёж на проверке.")
             return redirect("current_month")
         form = MeterReadingForm(request.POST, meters=meters)
         if form.is_valid():
