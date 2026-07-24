@@ -3,6 +3,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from enum import Enum
 
 CENT = Decimal("0.01")
+GCAL = Decimal("0.00001")  # heating quantities are shown to 5 decimal places
 
 def _money(value: Decimal) -> Decimal:
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
@@ -23,6 +24,8 @@ class ApartmentConfig:
     rent: Decimal
     internet: Decimal
     other_fixed: Decimal
+    # Гкал на подогрев 1 м³ ГВС (норматив дома); Гкал = объём × норматив.
+    gvs_heat_norm: Decimal = Decimal("0")
 
 @dataclass(frozen=True)
 class LineItem:
@@ -34,7 +37,8 @@ class LineItem:
 
 LABELS = {
     "cold_water": "Холодная вода",
-    "hot_water": "Горячая вода",
+    "hot_water_cold_component": "Горячая вода (компонент ХВ)",
+    "hot_water_heat_component": "Горячая вода (подогрев)",
     "sewage": "Водоотведение",
     "electricity_single": "Электроэнергия",
     "electricity_day": "Электроэнергия (день)",
@@ -71,8 +75,19 @@ def compute_statement(config, current, previous, tariffs):
         line, cold = _metered_line("cold_water", current, previous, tariffs)
         lines.append(line)
     if config.has_hot_water:
-        line, hot = _metered_line("hot_water", current, previous, tariffs)
-        lines.append(line)
+        # Двухкомпонентный ГВС: объём по счётчику (м³) оплачивается по
+        # компоненту ХВ, а тепло на подогрев (объём × норматив, Гкал) — по
+        # компоненту ТЭ. Водоотведение ниже считает только объём (hot).
+        hot = _consumption("hot_water", current, previous)
+        cold_rate = _tariff("hot_water_cold_component", tariffs)
+        lines.append(LineItem("hot_water_cold_component",
+                              LABELS["hot_water_cold_component"],
+                              hot, cold_rate, _money(hot * cold_rate)))
+        heat_qty = (hot * config.gvs_heat_norm).quantize(GCAL, rounding=ROUND_HALF_UP)
+        heat_rate = _tariff("hot_water_heat_component", tariffs)
+        lines.append(LineItem("hot_water_heat_component",
+                              LABELS["hot_water_heat_component"],
+                              heat_qty, heat_rate, _money(heat_qty * heat_rate)))
     if config.has_sewage:
         volume = cold + hot
         rate = _tariff("sewage", tariffs)

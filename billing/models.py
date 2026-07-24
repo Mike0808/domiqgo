@@ -14,6 +14,11 @@ class Apartment(models.Model):
     has_cold_water = models.BooleanField("Холодная вода", default=True)
     has_hot_water = models.BooleanField("Горячая вода", default=True)
     has_sewage = models.BooleanField("Водоотведение", default=True)
+    gvs_heat_norm = models.DecimalField(
+        "Норматив подогрева ГВС, Гкал/м³", max_digits=7, decimal_places=5,
+        default=Decimal("0"),
+        help_text="Тепло на подогрев 1 м³ горячей воды — см. квитанцию УК "
+                  "(обычно 0,05–0,065 Гкал/м³).")
     rent = models.DecimalField("Аренда", max_digits=10, decimal_places=2, default=Decimal("0"))
     internet = models.DecimalField("Интернет", max_digits=10, decimal_places=2, default=Decimal("0"))
     other_fixed = models.DecimalField("Прочее", max_digits=10, decimal_places=2, default=Decimal("0"))
@@ -43,10 +48,15 @@ class Tenant(models.Model):
         return self.full_name or self.user.get_username()
 
 class Tariff(models.Model):
-    COLD = "cold_water"; HOT = "hot_water"; SEWAGE = "sewage"
+    COLD = "cold_water"; SEWAGE = "sewage"
+    # ГВС в Уфе двухкомпонентный: объём (₽/м³) + подогрев (₽/Гкал).
+    HOT_COLD = "hot_water_cold_component"; HOT_HEAT = "hot_water_heat_component"
     ESINGLE = "electricity_single"; EDAY = "electricity_day"; ENIGHT = "electricity_night"
     UTILITY_CHOICES = [
-        (COLD, "Холодная вода"), (HOT, "Горячая вода"), (SEWAGE, "Водоотведение"),
+        (COLD, "Холодная вода"),
+        (HOT_COLD, "ГВС — компонент на холодную воду"),
+        (HOT_HEAT, "ГВС — компонент на тепловую энергию"),
+        (SEWAGE, "Водоотведение"),
         (ESINGLE, "Электроэнергия"), (EDAY, "Электроэнергия (день)"),
         (ENIGHT, "Электроэнергия (ночь)"),
     ]

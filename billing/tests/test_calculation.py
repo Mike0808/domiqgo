@@ -5,15 +5,17 @@ from billing.services.calculation import (
 )
 
 def cfg(meter=MeterType.SINGLE, cold=True, hot=True, sewage=True,
-        rent="0", internet="0", other="0"):
+        rent="0", internet="0", other="0", norm="0.05229"):
     return ApartmentConfig(
         electricity_meter_type=meter, has_cold_water=cold, has_hot_water=hot,
         has_sewage=sewage, rent=Decimal(rent), internet=Decimal(internet),
-        other_fixed=Decimal(other),
+        other_fixed=Decimal(other), gvs_heat_norm=Decimal(norm),
     )
 
 TARIFFS = {
-    "cold_water": Decimal("48.15"), "hot_water": Decimal("205.30"),
+    "cold_water": Decimal("48.15"),
+    "hot_water_cold_component": Decimal("25.86"),     # ₽/м³
+    "hot_water_heat_component": Decimal("2389.72"),   # ₽/Гкал
     "sewage": Decimal("36.40"), "electricity_single": Decimal("4.87"),
     "electricity_day": Decimal("5.62"), "electricity_night": Decimal("2.81"),
 }
@@ -29,13 +31,51 @@ def test_single_meter_full_bill():
     )
     by = {l.code: l for l in lines}
     assert by["cold_water"].amount == Decimal("481.50")     # 10 * 48.15
-    assert by["hot_water"].amount == Decimal("1026.50")     # 5 * 205.30
-    assert by["sewage"].amount == Decimal("546.00")         # (10+5) * 36.40
+    # ГВС two components: 5 м³ volume, 5 * 0.05229 = 0.26145 Гкал heating
+    assert by["hot_water_cold_component"].quantity == Decimal("5")
+    assert by["hot_water_cold_component"].amount == Decimal("129.30")   # 5 * 25.86
+    assert by["hot_water_heat_component"].quantity == Decimal("0.26145")
+    assert by["hot_water_heat_component"].amount == Decimal("624.79")   # 0.26145 * 2389.72
+    assert by["sewage"].amount == Decimal("546.00")         # (10+5) * 36.40 — volume only
     assert by["electricity_single"].amount == Decimal("487.00")  # 100 * 4.87
     assert by["rent"].amount == Decimal("20000.00")
     assert by["internet"].amount == Decimal("700.00")
     assert by["rent"].quantity is None
-    assert total == Decimal("23241.00")
+    assert total == Decimal("22968.59")
+
+def test_hot_water_heat_component_rounds_half_up():
+    lines, _ = compute_statement(
+        cfg(cold=False, sewage=False, norm="0.05"),
+        current={"hot_water": Decimal("1"), "electricity_single": Decimal("0")},
+        previous={"hot_water": Decimal("0"), "electricity_single": Decimal("0")},
+        tariffs={**TARIFFS, "hot_water_heat_component": Decimal("2410.10")},
+    )
+    by = {l.code: l for l in lines}
+    # 1 * 0.05 = 0.05 Гкал * 2410.10 = 120.505 -> 120.51 (HALF_UP, not banker's)
+    assert by["hot_water_heat_component"].amount == Decimal("120.51")
+
+def test_missing_heat_component_tariff_raises():
+    tariffs = dict(TARIFFS)
+    del tariffs["hot_water_heat_component"]
+    with pytest.raises(MissingTariffError):
+        compute_statement(
+            cfg(cold=False, sewage=False),
+            current={"hot_water": Decimal("55"), "electricity_single": Decimal("0")},
+            previous={"hot_water": Decimal("50"), "electricity_single": Decimal("0")},
+            tariffs=tariffs,
+        )
+
+def test_zero_norm_gives_zero_heat_amount():
+    lines, _ = compute_statement(
+        cfg(cold=False, sewage=False, norm="0"),
+        current={"hot_water": Decimal("55"), "electricity_single": Decimal("0")},
+        previous={"hot_water": Decimal("50"), "electricity_single": Decimal("0")},
+        tariffs=TARIFFS,
+    )
+    by = {l.code: l for l in lines}
+    assert by["hot_water_cold_component"].amount == Decimal("129.30")
+    assert by["hot_water_heat_component"].quantity == Decimal("0.00000")
+    assert by["hot_water_heat_component"].amount == Decimal("0.00")
 
 def test_dual_meter_splits_day_night():
     lines, total = compute_statement(
