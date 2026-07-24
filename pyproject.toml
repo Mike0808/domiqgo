@@ -1,0 +1,29 @@
+[project]
+name = "domiqgo"
+version = "0.1.0"
+description = "Utility billing portal for rented apartments (domiq-ufa.ru)"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.1,<5.2",
+    "whitenoise>=6",
+    "python-dotenv>=1",
+    "django-crispy-forms>=2",
+    "crispy-tailwind>=1",
+    "gunicorn>=23",
+    "requests>=2,<3",
+]
+
+[project.optional-dependencies]
+# MVP runs on SQLite; install this extra only when moving to PostgreSQL:
+#   uv sync --extra postgres
+postgres = ["psycopg[binary]>=3"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-django>=4",
+]
+
+[tool.uv]
+# Django project, not an installable package.
+package = false

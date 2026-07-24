@@ -1,0 +1,37 @@
+# Caddyfile for the Docker stack (mounted into the caddy service).
+# Auto HTTPS via Let's Encrypt for both hostnames — each needs a DNS A record
+# pointing at this server, and ports 80+443 open.
+
+# The billing portal.
+domiq-ufa.ru {
+	encode zstd gzip
+
+	request_body {
+		max_size 15MB
+	}
+
+	# Everything through Django: WhiteNoise serves /static, and /media
+	# (rental agreements, receipts) requires an authenticated per-tenant
+	# check (billing.views.media_file) — never serve it with file_server.
+	reverse_proxy web:8000
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+# wg-easy web UI (WireGuard peer management), HTTPS in front of port 51821.
+# Works after the wg-easy container joins this compose network:
+#   docker network connect domiqgo_default wg-easy
+# Fallback if you keep its UI published on the host instead:
+#   reverse_proxy host.docker.internal:51821
+# wg-easy's own password login stays on — Caddy only adds TLS, not auth.
+vpn.domiq-ufa.ru {
+	reverse_proxy wg-easy:51821
+
+	log {
+		output stdout
+		format json
+	}
+}

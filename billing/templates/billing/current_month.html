@@ -1,0 +1,53 @@
+{% extends "billing/base.html" %}
+{% load crispy_forms_tags %}
+{% block title %}Начисление — {{ period|date:"F Y" }}{% endblock %}
+{% block content %}
+<p class="text-xs uppercase tracking-widest text-ink-soft">Начисление за</p>
+<h1 class="mb-6 text-3xl font-bold capitalize">{{ period|date:"F Y" }}</h1>
+
+{% if locked %}
+<section class="mb-6 rounded-lg border border-line bg-white p-5">
+  <h2 class="mb-1 font-bold">Показания</h2>
+  <p class="text-sm text-ink-soft">Показания заблокированы — месяц оплачен или платёж на проверке.</p>
+</section>
+{% else %}
+<section class="mb-6 rounded-lg border border-line bg-white p-5">
+  <h2 class="mb-3 font-bold">Внести показания</h2>
+  <form method="post" class="readings-form">
+    {% csrf_token %}
+    {{ form|crispy }}
+    <button type="submit"
+            class="mt-2 w-full rounded bg-accent px-4 py-2.5 font-bold text-white hover:bg-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+      Сохранить показания
+    </button>
+  </form>
+</section>
+{% endif %}
+
+{% if statement %}
+<section class="rounded-lg border border-line bg-white">
+  <div class="flex items-center justify-between border-b border-dashed border-line px-5 py-4">
+    <h2 class="text-xs font-bold uppercase tracking-widest text-ink-soft">Квитанция</h2>
+    <span class="stamp stamp-{{ statement.status }}">{{ statement.get_status_display }}</span>
+  </div>
+  <div class="px-5 py-4">
+    {% for l in statement.lines %}
+    <div class="py-1.5">
+      <div class="flex items-baseline gap-2">
+        <span class="text-sm">{{ l.label }}</span>
+        <span class="flex-1 border-b border-dotted border-line"></span>
+        <span class="font-mono text-sm">{{ l.amount }} ₽</span>
+      </div>
+      {% if l.quantity %}
+      <div class="font-mono text-xs text-ink-soft">{{ l.quantity }} × {{ l.rate }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <div class="mt-3 flex items-baseline justify-between border-t-2 border-ink pt-3">
+      <span class="font-bold">Итого</span>
+      <span class="font-mono text-xl font-bold">{{ statement.total }} ₽</span>
+    </div>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,50 @@
+# domiq-ufa.ru — MVP stack for a 1 CPU / 1 GB / 15 GB VPS.
+#
+#   web    Django + gunicorn, SQLite on the `data` volume
+#   caddy  TLS termination (Let's Encrypt), proxies the site to web:8000
+#          and the wg-easy UI to the wireguard container (see Caddyfile)
+#
+# The wireguard/wg-easy container is NOT managed by this compose file (it is
+# preinstalled on the host). To let Caddy reach its UI on 51821 securely,
+# attach it to this project's network once:
+#
+#   docker network connect domiqgo_default wg-easy
+#
+# ...and remove any public "51821:51821" port publish from the wg-easy
+# container — only WireGuard itself (51820/udp) should stay published.
+# If you prefer not to attach it, keep its UI published on the host and
+# switch the Caddyfile upstream to host.docker.internal:51821 (the caddy
+# service below already maps host-gateway for that fallback).
+
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SQLITE_PATH: /data/db.sqlite3
+      MEDIA_ROOT: /data/media
+    volumes:
+      - data:/data
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - web
+
+volumes:
+  data:
+  caddy_data:
+  caddy_config:

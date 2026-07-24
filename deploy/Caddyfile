@@ -1,0 +1,32 @@
+# Caddyfile for domiq-ufa.ru
+# Auto HTTPS: Caddy obtains and renews a Let's Encrypt certificate for this
+# domain automatically. Requirements:
+#   - domiq-ufa.ru DNS A record points to this server's public IP
+#   - ports 80 and 443 open (80 is needed for the ACME HTTP-01 challenge)
+#
+# Install: place this file at /etc/caddy/Caddyfile, then `sudo systemctl reload caddy`.
+
+domiq-ufa.ru {
+	# Compress responses.
+	encode zstd gzip
+
+	# Cap request bodies (receipt / agreement uploads).
+	request_body {
+		max_size 15MB
+	}
+
+	# Everything -> gunicorn (Django). WhiteNoise serves /static from inside
+	# the app. /media (rental agreements, receipts) deliberately goes through
+	# Django too: those files are private and require an authenticated,
+	# per-tenant check (billing.views.media_file) — never serve them with a
+	# bare file_server.
+	handle {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	# Access log.
+	log {
+		output file /var/log/caddy/domiq-ufa.access.log
+		format json
+	}
+}
