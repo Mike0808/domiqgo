@@ -5,11 +5,15 @@ from billing.models import Apartment, MonthlyStatement, Payment
 
 pytestmark = pytest.mark.django_db
 
+@pytest.fixture
+def media_isolation(settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path
+
 def _stmt():
     a = Apartment.objects.create(label="кв. 1")
     return MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1))
 
-def test_payment_defaults_to_pending():
+def test_payment_defaults_to_pending(media_isolation):
     p = Payment(statement=_stmt(), source=Payment.TELEGRAM)
     p.file.save("r.jpg", ContentFile(b"img"), save=True)
     assert p.status == Payment.PENDING
