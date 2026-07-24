@@ -50,3 +50,12 @@ def test_webhook_bad_json_returns_400(settings):
     resp = Client().post(WEBHOOK, data="not-json", content_type="application/json",
                          HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="s3cret")
     assert resp.status_code == 400
+
+def test_unset_secret_rejects_all_requests(settings):
+    settings.TELEGRAM_WEBHOOK_SECRET = ""
+    body = json.dumps({"message": {"chat": {"id": 555}, "text": "hi"}})
+    resp_no_header = Client().post(WEBHOOK, data=body, content_type="application/json")
+    assert resp_no_header.status_code == 403
+    resp_empty_header = Client().post(WEBHOOK, data=body, content_type="application/json",
+                                      HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="")
+    assert resp_empty_header.status_code == 403
