@@ -114,3 +114,30 @@ class Document(models.Model):
 
     def __str__(self):
         return self.title
+
+def receipt_upload_path(instance, filename):
+    return f"receipts/statement_{instance.statement_id}/{filename}"
+
+class Payment(models.Model):
+    TELEGRAM = "telegram"; MAX = "max"; WEB = "web"
+    SOURCE_CHOICES = [(TELEGRAM, "Telegram"), (MAX, "MAX"), (WEB, "Веб")]
+    PENDING = "pending"; CONFIRMED = "confirmed"; REJECTED = "rejected"
+    STATUS_CHOICES = [
+        (PENDING, "На проверке"), (CONFIRMED, "Подтверждён"), (REJECTED, "Отклонён"),
+    ]
+
+    statement = models.ForeignKey(MonthlyStatement, on_delete=models.CASCADE,
+                                  related_name="payments")
+    file = models.FileField("Чек", upload_to=receipt_upload_path)
+    source = models.CharField("Источник", max_length=10, choices=SOURCE_CHOICES)
+    status = models.CharField("Статус", max_length=10, choices=STATUS_CHOICES, default=PENDING)
+    note = models.CharField("Примечание", max_length=300, blank=True)
+    submitted_at = models.DateTimeField("Получен", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Платёж"
+        verbose_name_plural = "Платежи"
+        ordering = ["-submitted_at"]
+
+    def __str__(self):
+        return f"Платёж {self.statement} ({self.get_status_display()})"
