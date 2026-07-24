@@ -1,0 +1,91 @@
+/* Source stylesheet for the Tailwind standalone CLI.
+   Build: tools\tailwindcss.exe -i static_src\input.css -o billing\static\billing\css\app.css --minify
+   The built app.css IS committed so servers never need the CLI. */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* PT Sans / PT Mono, self-hosted (billing/static/billing/fonts/).
+   The PT family was commissioned for Russian public documents — native Cyrillic. */
+/* cyrillic */
+@font-face {
+  font-family: "PT Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/PTMono-400-cyrillic.woff2") format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* latin */
+@font-face {
+  font-family: "PT Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/PTMono-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic */
+@font-face {
+  font-family: "PT Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/PTSans-400-cyrillic.woff2") format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* latin */
+@font-face {
+  font-family: "PT Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/PTSans-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic */
+@font-face {
+  font-family: "PT Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/PTSans-700-cyrillic.woff2") format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* latin */
+@font-face {
+  font-family: "PT Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/PTSans-700-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Alpine: hide x-cloak'd elements until Alpine initializes. */
+[x-cloak] { display: none !important; }
+
+/* Meter readings are numbers — set them in the receipt's mono face. */
+.readings-form input { font-family: "PT Mono", ui-monospace, monospace; }
+
+/* Status stamps. Plain CSS (not @layer) because the modifier class is built
+   dynamically in templates ("stamp-{{ statement.status }}") and would be
+   invisible to Tailwind's content scanner. */
+.stamp {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border: 2px solid currentColor;
+  border-radius: 0.25rem;
+  font-weight: 700;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.stamp-unpaid  { color: #B3372E; background: #FBE9E7; }
+.stamp-pending { color: #9A6700; background: #FBF0D2; }
+.stamp-paid    { color: #1A7F37; background: #E6F4EA; transform: rotate(-2deg); }
+@media (prefers-reduced-motion: reduce) {
+  .stamp-paid { transform: none; }
+}

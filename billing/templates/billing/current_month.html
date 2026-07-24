@@ -1,43 +1,53 @@
 {% extends "billing/base.html" %}
-{% block title %}Начисление за месяц{% endblock %}
+{% load crispy_forms_tags %}
+{% block title %}Начисление — {{ period|date:"F Y" }}{% endblock %}
 {% block content %}
-<h2>Начисление за {{ period|date:"F Y" }}</h2>
+<p class="text-xs uppercase tracking-widest text-ink-soft">Начисление за</p>
+<h1 class="mb-6 text-3xl font-bold capitalize">{{ period|date:"F Y" }}</h1>
+
 {% if locked %}
-<div class="card">
-  <h3>Внести показания</h3>
-  <p>Месяц оплачен — изменение показаний закрыто.</p>
-</div>
+<section class="mb-6 rounded-lg border border-line bg-white p-5">
+  <h2 class="mb-1 font-bold">Показания</h2>
+  <p class="text-sm text-ink-soft">Месяц оплачен — изменение показаний закрыто.</p>
+</section>
 {% else %}
-<div class="card">
-  <h3>Внести показания</h3>
-  <form method="post">
+<section class="mb-6 rounded-lg border border-line bg-white p-5">
+  <h2 class="mb-3 font-bold">Внести показания</h2>
+  <form method="post" class="readings-form">
     {% csrf_token %}
-    {% for field in form %}
-      <label>{{ field.label }}</label>
-      {{ field }}
-      {% for e in field.errors %}<div class="msg err">{{ e }}</div>{% endfor %}
-    {% endfor %}
-    <button type="submit">Сохранить показания</button>
+    {{ form|crispy }}
+    <button type="submit"
+            class="mt-2 w-full rounded bg-accent px-4 py-2.5 font-bold text-white hover:bg-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+      Сохранить показания
+    </button>
   </form>
-</div>
+</section>
 {% endif %}
+
 {% if statement %}
-<div class="card">
-  <h3>К оплате
-    <span class="badge {{ statement.status }}">{{ statement.get_status_display }}</span>
-  </h3>
-  <table>
-    <tr><th>Услуга</th><th>Кол-во</th><th>Тариф</th><th>Сумма, ₽</th></tr>
+<section class="rounded-lg border border-line bg-white">
+  <div class="flex items-center justify-between border-b border-dashed border-line px-5 py-4">
+    <h2 class="text-xs font-bold uppercase tracking-widest text-ink-soft">Квитанция</h2>
+    <span class="stamp stamp-{{ statement.status }}">{{ statement.get_status_display }}</span>
+  </div>
+  <div class="px-5 py-4">
     {% for l in statement.lines %}
-    <tr>
-      <td>{{ l.label }}</td>
-      <td>{% if l.quantity %}{{ l.quantity }}{% else %}—{% endif %}</td>
-      <td>{{ l.rate }}</td>
-      <td>{{ l.amount }}</td>
-    </tr>
+    <div class="py-1.5">
+      <div class="flex items-baseline gap-2">
+        <span class="text-sm">{{ l.label }}</span>
+        <span class="flex-1 border-b border-dotted border-line"></span>
+        <span class="font-mono text-sm">{{ l.amount }} ₽</span>
+      </div>
+      {% if l.quantity %}
+      <div class="font-mono text-xs text-ink-soft">{{ l.quantity }} × {{ l.rate }}</div>
+      {% endif %}
+    </div>
     {% endfor %}
-    <tr class="total"><td colspan="3">Итого</td><td>{{ statement.total }}</td></tr>
-  </table>
-</div>
+    <div class="mt-3 flex items-baseline justify-between border-t-2 border-ink pt-3">
+      <span class="font-bold">Итого</span>
+      <span class="font-mono text-xl font-bold">{{ statement.total }} ₽</span>
+    </div>
+  </div>
+</section>
 {% endif %}
 {% endblock %}

@@ -1,19 +1,31 @@
 {% extends "billing/base.html" %}
-{% block title %}История{% endblock %}
+{% block title %}История начислений{% endblock %}
 {% block content %}
-<h2>История начислений</h2>
+<h1 class="mb-6 text-3xl font-bold">История</h1>
 {% for s in statements %}
-<div class="card">
-  <strong>{{ s.period|date:"F Y" }}</strong>
-  <span class="badge {{ s.status }}">{{ s.get_status_display }}</span>
-  <table>
+<section class="mb-3 rounded-lg border border-line bg-white" x-data="{ open: {% if forloop.first %}true{% else %}false{% endif %} }">
+  <button type="button" @click="open = !open" :aria-expanded="open"
+          class="flex w-full items-center justify-between px-5 py-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">
+    <span class="font-bold capitalize">{{ s.period|date:"F Y" }}</span>
+    <span class="flex items-center gap-3">
+      <span class="stamp stamp-{{ s.status }}">{{ s.get_status_display }}</span>
+      <span class="font-mono font-bold">{{ s.total }} ₽</span>
+      <span class="text-ink-soft" x-text="open ? '−' : '+'" aria-hidden="true">+</span>
+    </span>
+  </button>
+  <div class="border-t border-dashed border-line px-5 py-3" x-show="open" x-cloak>
     {% for l in s.lines %}
-    <tr><td>{{ l.label }}</td><td>{{ l.amount }} ₽</td></tr>
+    <div class="flex items-baseline gap-2 py-1">
+      <span class="text-sm">{{ l.label }}</span>
+      <span class="flex-1 border-b border-dotted border-line"></span>
+      <span class="font-mono text-sm">{{ l.amount }} ₽</span>
+    </div>
     {% endfor %}
-    <tr class="total"><td>Итого</td><td>{{ s.total }} ₽</td></tr>
-  </table>
-</div>
+  </div>
+</section>
 {% empty %}
-<p>Пока нет начислений.</p>
+<section class="rounded-lg border border-line bg-white p-5 text-sm text-ink-soft">
+  Пока нет начислений. Они появятся после внесения показаний за первый месяц.
+</section>
 {% endfor %}
 {% endblock %}

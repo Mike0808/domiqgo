@@ -141,6 +141,23 @@ git pull
 sudo systemctl restart domiqgo
 ```
 
+## Frontend CSS build (development machines only)
+
+The stylesheet `billing/static/billing/css/app.css` is **generated** by the
+Tailwind standalone CLI (no Node needed) and **committed**, so servers never
+build it — `collectstatic` just picks it up. Rebuild it whenever templates,
+`static_src/input.css`, or `tailwind.config.js` change:
+
+```powershell
+# one-time: download the CLI (~40 MB) — Windows dev machine
+# https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-windows-x64.exe
+#   -> save as tools\tailwindcss.exe   (tools/ is git-ignored)
+tools\tailwindcss.exe -i static_src\input.css -o billing\static\billing\css\app.css --minify
+```
+
+htmx, Alpine.js, and the PT Sans/PT Mono fonts are vendored under
+`billing/static/billing/` — the site makes no CDN requests.
+
 ## Troubleshooting
 
 - **Cert won't issue:** DNS not pointing here yet, or port 80 blocked. Check

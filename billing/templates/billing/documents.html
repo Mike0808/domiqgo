@@ -1,11 +1,22 @@
 {% extends "billing/base.html" %}
-{% block title %}Документы{% endblock %}
+{% block title %}Мои документы{% endblock %}
 {% block content %}
-<h2>Мои документы</h2>
+<h1 class="mb-6 text-3xl font-bold">Документы</h1>
 {% for d in documents %}
-<div class="card"><a href="{{ d.file.url }}">{{ d.title }}</a>
-  <div>Загружен: {{ d.uploaded_at|date:"d.m.Y" }}</div></div>
+<a href="{{ d.file.url }}"
+   class="mb-3 flex items-center gap-3 rounded-lg border border-line bg-white p-4 hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+  <svg class="h-5 w-5 shrink-0 text-accent" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+    <path d="M12 2H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5l-3-3z"/>
+    <path d="M12 2v3h3"/>
+  </svg>
+  <span>
+    <span class="block font-bold">{{ d.title }}</span>
+    <span class="block text-xs text-ink-soft">Загружен {{ d.uploaded_at|date:"d.m.Y" }}</span>
+  </span>
+</a>
 {% empty %}
-<p>Документы не загружены.</p>
+<section class="rounded-lg border border-line bg-white p-5 text-sm text-ink-soft">
+  Документы не загружены. Договор аренды появится здесь, когда его добавит арендодатель.
+</section>
 {% endfor %}
 {% endblock %}

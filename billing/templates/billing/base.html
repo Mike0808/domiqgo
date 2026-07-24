@@ -4,35 +4,54 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}ЖКХ{% endblock %}</title>
-  <style>
-    body{font-family:system-ui,sans-serif;margin:0;background:#f5f6f8;color:#1a1a1a}
-    .wrap{max-width:560px;margin:0 auto;padding:16px}
-    nav a{margin-right:12px}
-    .card{background:#fff;border-radius:12px;padding:16px;margin:12px 0;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-    table{width:100%;border-collapse:collapse}
-    td,th{padding:6px 4px;text-align:left;border-bottom:1px solid #eee}
-    .total{font-weight:700;font-size:1.1em}
-    input{width:100%;padding:8px;box-sizing:border-box;margin:4px 0 12px}
-    button{padding:10px 16px;border:0;border-radius:8px;background:#2a6df4;color:#fff;font-size:1em}
-    .badge{padding:2px 8px;border-radius:8px;font-size:.85em}
-    .unpaid{background:#fde2e1;color:#a11}.pending{background:#fff2cc;color:#8a6d00}.paid{background:#e2f5e1;color:#137a13}
-    .msg{padding:8px 12px;border-radius:8px;margin:8px 0;background:#eef}
-    .err{background:#fde2e1;color:#a11}
-  </style>
+  <title>{% block title %}Домик · ЖКХ{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'billing/css/app.css' %}">
+  <script src="{% static 'billing/vendor/htmx.min.js' %}" defer></script>
+  <script src="{% static 'billing/vendor/alpine.min.js' %}" defer></script>
 </head>
-<body>
-<div class="wrap">
-  <nav>
-    <a href="{% url 'current_month' %}">Этот месяц</a>
-    <a href="{% url 'history' %}">История</a>
-    <a href="{% url 'documents' %}">Документы</a>
+<body class="min-h-screen bg-paper font-sans text-ink antialiased" hx-boost="true">
+<header class="border-b-2 border-ink bg-white">
+  <div class="mx-auto flex max-w-xl items-baseline justify-between px-4 pt-4">
+    <div>
+      <span class="text-lg font-bold tracking-tight">домик</span><span class="text-lg font-bold text-accent">·уфа</span>
+      <span class="ml-2 hidden text-xs text-ink-soft sm:inline">коммунальные платежи</span>
+    </div>
     {% if user.is_authenticated %}
-      <form method="post" action="{% url 'logout' %}" style="display:inline">{% csrf_token %}<button type="submit" style="background:none;border:0;padding:0;color:#2a6df4;font-size:1em;cursor:pointer">Выход</button></form>
+    <form method="post" action="{% url 'logout' %}">
+      {% csrf_token %}
+      <button type="submit"
+              class="text-sm text-ink-soft underline decoration-line underline-offset-4 hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+        Выйти
+      </button>
+    </form>
     {% endif %}
+  </div>
+  {% if user.is_authenticated %}
+  {% with url_name=request.resolver_match.url_name %}
+  <nav class="mx-auto flex max-w-xl gap-1 px-4 pt-3">
+    <a href="{% url 'current_month' %}"
+       class="rounded-t px-3 py-2 text-sm {% if url_name == 'current_month' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Этот месяц</a>
+    <a href="{% url 'history' %}"
+       class="rounded-t px-3 py-2 text-sm {% if url_name == 'history' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">История</a>
+    <a href="{% url 'documents' %}"
+       class="rounded-t px-3 py-2 text-sm {% if url_name == 'documents' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Документы</a>
   </nav>
-  {% for m in messages %}<div class="msg {% if m.tags == 'error' %}err{% endif %}">{{ m }}</div>{% endfor %}
+  {% endwith %}
+  {% endif %}
+</header>
+
+<main class="mx-auto max-w-xl px-4 py-6">
+  {% for m in messages %}
+  <div class="mb-4 rounded border-l-4 px-4 py-3 text-sm
+              {% if m.tags == 'error' %}border-unpaid bg-unpaid-bg text-unpaid{% elif m.tags == 'success' %}border-paid bg-paid-bg text-paid{% else %}border-accent bg-accent-light text-accent{% endif %}">
+    {{ m }}
+  </div>
+  {% endfor %}
   {% block content %}{% endblock %}
-</div>
+</main>
+
+<footer class="mx-auto max-w-xl px-4 pb-8 text-center text-xs text-ink-soft">
+  domiq-ufa.ru
+</footer>
 </body>
 </html>
