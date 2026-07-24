@@ -57,3 +57,13 @@ def test_delete_payment_removes_file_and_reverts_status(admin_client, media_isol
     assert not Payment.objects.filter(pk=p.pk).exists()
     assert not os.path.exists(path)
     assert MonthlyStatement.objects.get().status == MonthlyStatement.UNPAID
+
+def test_delete_stray_pending_on_paid_statement_keeps_it_paid(admin_client, media_isolation):
+    p = _pending_payment()
+    stmt = p.statement
+    stmt.status = MonthlyStatement.PAID
+    stmt.save(update_fields=["status"])
+    admin_client.post(f"/admin/billing/payment/{p.pk}/delete/", {"post": "yes"})
+    assert not Payment.objects.filter(pk=p.pk).exists()
+    stmt.refresh_from_db()
+    assert stmt.status == MonthlyStatement.PAID

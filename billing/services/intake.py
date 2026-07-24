@@ -29,6 +29,15 @@ def confirm_payment(payment):
     stmt.status = MonthlyStatement.PAID
     stmt.save(update_fields=["status"])
 
+def _revert_if_no_pending(stmt):
+    """Drop a statement back to UNPAID once no PENDING payment remains,
+    unless it's already PAID — a landlord-confirmed payment must never be
+    silently undone by rejecting/deleting an unrelated stray receipt."""
+    if (stmt.status != MonthlyStatement.PAID
+            and not stmt.payments.filter(status=Payment.PENDING).exists()):
+        stmt.status = MonthlyStatement.UNPAID
+        stmt.save(update_fields=["status"])
+
 @transaction.atomic
 def reject_payment(payment, note=""):
     payment.status = Payment.REJECTED
@@ -37,7 +46,4 @@ def reject_payment(payment, note=""):
         payment.note = note
         fields.append("note")
     payment.save(update_fields=fields)
-    stmt = payment.statement
-    if not stmt.payments.filter(status=Payment.PENDING).exists():
-        stmt.status = MonthlyStatement.UNPAID
-        stmt.save(update_fields=["status"])
+    _revert_if_no_pending(payment.statement)

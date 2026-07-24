@@ -76,3 +76,13 @@ def test_reject_keeps_pending_when_another_pending_exists(media_isolation):
     reject_payment(p1)
     stmt.refresh_from_db()
     assert stmt.status == MonthlyStatement.PENDING
+
+def test_reject_stray_pending_on_paid_statement_keeps_it_paid(media_isolation):
+    tenant, a = _tenant()
+    stmt = MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1), status="paid")
+    # a stray pending payment attached after the statement was already confirmed paid
+    stray = Payment.objects.create(statement=stmt, source=Payment.WEB, status=Payment.PENDING)
+    reject_payment(stray)
+    stray.refresh_from_db(); stmt.refresh_from_db()
+    assert stray.status == Payment.REJECTED
+    assert stmt.status == MonthlyStatement.PAID

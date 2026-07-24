@@ -5,7 +5,7 @@ from .models import (
     Apartment, Tenant, Tariff, MeterReading, MonthlyStatement, Document, Payment,
 )
 from .services.statements import generate_statement
-from .services.intake import confirm_payment, reject_payment
+from .services.intake import confirm_payment, reject_payment, _revert_if_no_pending
 
 @admin.register(Apartment)
 class ApartmentAdmin(admin.ModelAdmin):
@@ -87,10 +87,7 @@ class PaymentAdmin(admin.ModelAdmin):
         payment.file.delete(save=False)
         stmt = payment.statement
         payment.delete()
-        if (stmt.status == MonthlyStatement.PENDING
-                and not stmt.payments.filter(status=Payment.PENDING).exists()):
-            stmt.status = MonthlyStatement.UNPAID
-            stmt.save(update_fields=["status"])
+        _revert_if_no_pending(stmt)
 
     def delete_model(self, request, obj):
         self._delete_with_file(obj)
