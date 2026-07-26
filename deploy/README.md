@@ -83,18 +83,29 @@ docker compose up -d --build
 
 Migrations and collectstatic run automatically (entrypoint / image build).
 
-## Backups (SQLite + uploads)
+## Backups (SQLite + uploads → Yandex Disk)
 
 Everything that matters lives on the `data` volume: `/data/db.sqlite3` and
-`/data/media/`. Online-safe database snapshot:
+`/data/media/`. `deploy/backup-yadisk.sh` snapshots both (online-safe SQLite
+backup, works while the site is live), packs them into
+`domiqgo-YYYY-MM-DD_HHMM.tar.gz`, uploads to Yandex Disk over WebDAV, and
+prunes old archives (keeps the newest `KEEP`, default 14).
 
 ```bash
-docker compose exec web python -c "import sqlite3; sqlite3.connect('/data/db.sqlite3').backup(sqlite3.connect('/data/db-backup.sqlite3'))"
-docker compose cp web:/data/db-backup.sqlite3 ./backups/db-$(date +%F).sqlite3
-docker compose cp web:/data/media ./backups/media-$(date +%F)
+# once: create an app password (id.yandex.ru -> Безопасность ->
+# Пароли приложений -> «Файлы (WebDAV)»), then:
+cp deploy/.backup.env.example /srv/domiqgo/.backup.env
+chmod 600 /srv/domiqgo/.backup.env
+nano /srv/domiqgo/.backup.env          # login + app password
+chmod +x deploy/backup-yadisk.sh
+./deploy/backup-yadisk.sh              # test run — expect "OK: ... uploaded"
+
+# nightly at 03:00:
+crontab -e
+# 0 3 * * * /srv/domiqgo/deploy/backup-yadisk.sh >> /var/log/domiqgo-backup.log 2>&1
 ```
 
-Put the first two lines in a cron job; 15 GB NVMe holds years of this data.
+Restore instructions are in the header of `deploy/backup-yadisk.sh`.
 
 ## Moving to PostgreSQL later
 
