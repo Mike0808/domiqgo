@@ -15,13 +15,8 @@
 #      crontab -e
 #      0 3 * * * /srv/domiqgo/deploy/backup-yadisk.sh >> /var/log/domiqgo-backup.log 2>&1
 #
-# Restore (example):
-#   curl -u "$YADISK_USER:$YADISK_APP_PASSWORD" -o backup.tar.gz \
-#        "https://webdav.yandex.ru/domiqgo-backups/domiqgo-<STAMP>.tar.gz"
-#   tar -xzf backup.tar.gz
-#   docker compose cp db.sqlite3 web:/data/db.sqlite3
-#   docker compose cp media/. web:/data/media
-#   docker compose restart web
+# Restore: use deploy/restore-yadisk.sh (lists backups, verifies integrity,
+# keeps a pre-restore safety copy, swaps db+media with the site stopped).
 
 set -euo pipefail
 

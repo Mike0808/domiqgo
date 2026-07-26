@@ -105,7 +105,18 @@ crontab -e
 # 0 3 * * * /srv/domiqgo/deploy/backup-yadisk.sh >> /var/log/domiqgo-backup.log 2>&1
 ```
 
-Restore instructions are in the header of `deploy/backup-yadisk.sh`.
+Restore with `deploy/restore-yadisk.sh`:
+
+```bash
+./deploy/restore-yadisk.sh                # list available backups
+./deploy/restore-yadisk.sh latest         # restore the newest
+./deploy/restore-yadisk.sh domiqgo-2026-07-26_0300.tar.gz
+```
+
+It verifies the downloaded database (`PRAGMA integrity_check` — worth
+`apt install sqlite3` on the VPS), asks for confirmation, saves the current
+db+media to `pre-restore-<timestamp>/` first, swaps everything with the web
+container stopped, and checks the site answers afterwards.
 
 ## Moving to PostgreSQL later
 
