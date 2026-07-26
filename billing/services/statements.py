@@ -69,7 +69,7 @@ def generate_statement(apartment, period: date) -> MonthlyStatement:
         has_hot_water=apartment.has_hot_water,
         has_sewage=apartment.has_sewage,
         rent=apartment.rent, internet=apartment.internet, other_fixed=apartment.other_fixed,
-        gvs_heat_norm=apartment.gvs_heat_norm,
+        gvs_heat_norm=apartment.gvs_heat_norm, round_total=apartment.round_total,
     )
     current = _readings_map(apartment, period)
     previous = _previous_readings(apartment, period, meters_for(apartment))
