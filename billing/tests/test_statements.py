@@ -35,8 +35,9 @@ def test_generate_uses_previous_period_as_baseline():
 
     stmt = generate_statement(a, date(2026, 7, 1))
 
-    assert stmt.total == Decimal("22968.59")
+    assert stmt.total == Decimal("22950.00")   # 22968.59 floored to 50
     by = {l["code"]: l for l in stmt.lines}
+    assert by["rounding"]["amount"] == "-18.59"
     assert by["cold_water"]["amount"] == "481.50"
     assert by["hot_water_cold_component"]["amount"] == "129.30"    # 5 * 25.86
     assert by["hot_water_heat_component"]["quantity"] == "0.26145"  # 5 * 0.05229 Гкал
@@ -96,8 +97,8 @@ def test_first_month_baseline_comes_from_meter_initial_values():
 
     stmt = generate_statement(a, date(2026, 7, 1))
 
-    # (110-100)*48.15 + (1500-1400)*4.87 — NOT billed from zero
-    assert stmt.total == Decimal("968.50")
+    # (110-100)*48.15 + (1500-1400)*4.87 = 968.50, floored to 50 -> 950
+    assert stmt.total == Decimal("950.00")
 
 def test_baseline_falls_back_per_meter():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
@@ -112,8 +113,8 @@ def test_baseline_falls_back_per_meter():
 
     stmt = generate_statement(a, date(2026, 7, 1))
 
-    # cold: (110-100)*48.15 = 481.50; elec: (1500-1450)*4.87 = 243.50
-    assert stmt.total == Decimal("725.00")
+    # cold: (110-100)*48.15 = 481.50; elec: (1500-1450)*4.87 = 243.50; 725 -> 700
+    assert stmt.total == Decimal("700.00")
 
 def test_missing_baseline_raises_instead_of_billing_from_zero():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)

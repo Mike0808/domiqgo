@@ -41,7 +41,9 @@ def test_single_meter_full_bill():
     assert by["rent"].amount == Decimal("20000.00")
     assert by["internet"].amount == Decimal("700.00")
     assert by["rent"].quantity is None
-    assert total == Decimal("22968.59")
+    # exact sum 22968.59 floors to the nearest 50 with an explicit adjustment
+    assert by["rounding"].amount == Decimal("-18.59")
+    assert total == Decimal("22950.00")
 
 def test_hot_water_heat_component_rounds_half_up():
     lines, _ = compute_statement(
@@ -88,7 +90,30 @@ def test_dual_meter_splits_day_night():
     assert by["electricity_day"].amount == Decimal("562.00")    # 100 * 5.62
     assert by["electricity_night"].amount == Decimal("281.00")  # 100 * 2.81
     assert "electricity_single" not in by
-    assert total == Decimal("843.00")
+    assert by["rounding"].amount == Decimal("-43.00")           # 843 -> 800
+    assert total == Decimal("800.00")
+
+def test_total_already_multiple_of_50_has_no_rounding_line():
+    lines, total = compute_statement(
+        cfg(cold=False, hot=False, sewage=False, rent="20000"),
+        current={"electricity_single": Decimal("50")},
+        previous={"electricity_single": Decimal("50")},
+        tariffs=TARIFFS,
+    )
+    assert total == Decimal("20000.00")
+    assert all(l.code != "rounding" for l in lines)
+
+def test_heat_line_label_shows_volume_and_norm():
+    lines, _ = compute_statement(
+        cfg(cold=False, sewage=False, norm="0.05760"),
+        current={"hot_water": Decimal("1"), "electricity_single": Decimal("0")},
+        previous={"hot_water": Decimal("0"), "electricity_single": Decimal("0")},
+        tariffs={**TARIFFS, "hot_water_heat_component": Decimal("3347.81")},
+    )
+    heat = {l.code: l for l in lines}["hot_water_heat_component"]
+    # 1 м³ × 0.05760 Гкал/м³ = 0.05760 Гкал; the label spells out the derivation
+    assert "1 м³" in heat.label and "0.05760" in heat.label
+    assert heat.amount == Decimal("192.83")
 
 def test_missing_tariff_raises():
     with pytest.raises(MissingTariffError):

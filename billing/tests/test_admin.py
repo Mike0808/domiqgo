@@ -35,8 +35,8 @@ def test_regenerate_action_recomputes_total(admin_client):
         "_selected_action": [str(stmt.pk)],
     })
     stmt.refresh_from_db()
-    # New meters start at 0: 110*48.15 + 1600*4.87
-    assert stmt.total == Decimal("13088.50")
+    # New meters start at 0: 110*48.15 + 1600*4.87 = 13088.50 -> floored to 13050
+    assert stmt.total == Decimal("13050.00")
 
 def test_regenerate_action_reports_failure_without_500(admin_client):
     from billing.models import Meter
@@ -68,4 +68,4 @@ def test_admin_saving_reading_recalculates_statement(admin_client):
     }, follow=True)
     assert resp.status_code == 200
     stmt = MonthlyStatement.objects.get(apartment=a, period=date(2026, 7, 1))
-    assert stmt.total == Decimal("968.50")  # recalculated on save
+    assert stmt.total == Decimal("950.00")  # recalculated on save, floored to 50

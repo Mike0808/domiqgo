@@ -78,7 +78,9 @@ def current_month(request):
             messages.success(request, "Показания сохранены.")
             return redirect("current_month")
     else:
-        form = MeterReadingForm(meters=meters, serials=serials)
+        entered = {r.meter: r.value for r in
+                   MeterReading.objects.filter(apartment=apartment, period=period)}
+        form = MeterReadingForm(meters=meters, serials=serials, initial=entered)
 
     return render(request, "billing/current_month.html",
                   {"form": form, "statement": statement, "period": period,
