@@ -68,4 +68,4 @@ def test_admin_saving_reading_recalculates_statement(admin_client):
     }, follow=True)
     assert resp.status_code == 200
     stmt = MonthlyStatement.objects.get(apartment=a, period=date(2026, 7, 1))
-    assert stmt.total == Decimal("950.00")  # recalculated on save, floored to 50
+    assert stmt.total == Decimal("968.50")  # recalculated on save; below 10 000 — not rounded

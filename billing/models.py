@@ -19,6 +19,10 @@ class Apartment(models.Model):
         default=Decimal("0"),
         help_text="Тепло на подогрев 1 м³ горячей воды — см. квитанцию УК "
                   "(обычно 0,05–0,065 Гкал/м³).")
+    round_total = models.BooleanField(
+        "Округлять итог", default=True,
+        help_text="Итог свыше 10 000 ₽ округляется вниз до кратного 50 ₽ "
+                  "(строка «Округление» в квитанции).")
     rent = models.DecimalField("Аренда", max_digits=10, decimal_places=2, default=Decimal("0"))
     internet = models.DecimalField("Интернет", max_digits=10, decimal_places=2, default=Decimal("0"))
     other_fixed = models.DecimalField("Прочее", max_digits=10, decimal_places=2, default=Decimal("0"))

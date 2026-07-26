@@ -5,11 +5,12 @@ from billing.services.calculation import (
 )
 
 def cfg(meter=MeterType.SINGLE, cold=True, hot=True, sewage=True,
-        rent="0", internet="0", other="0", norm="0.05229"):
+        rent="0", internet="0", other="0", norm="0.05229", round_total=True):
     return ApartmentConfig(
         electricity_meter_type=meter, has_cold_water=cold, has_hot_water=hot,
         has_sewage=sewage, rent=Decimal(rent), internet=Decimal(internet),
         other_fixed=Decimal(other), gvs_heat_norm=Decimal(norm),
+        round_total=round_total,
     )
 
 TARIFFS = {
@@ -90,8 +91,9 @@ def test_dual_meter_splits_day_night():
     assert by["electricity_day"].amount == Decimal("562.00")    # 100 * 5.62
     assert by["electricity_night"].amount == Decimal("281.00")  # 100 * 2.81
     assert "electricity_single" not in by
-    assert by["rounding"].amount == Decimal("-43.00")           # 843 -> 800
-    assert total == Decimal("800.00")
+    # 843.00 is below the 10 000 threshold — no rounding
+    assert "rounding" not in by
+    assert total == Decimal("843.00")
 
 def test_total_already_multiple_of_50_has_no_rounding_line():
     lines, total = compute_statement(
@@ -102,6 +104,37 @@ def test_total_already_multiple_of_50_has_no_rounding_line():
     )
     assert total == Decimal("20000.00")
     assert all(l.code != "rounding" for l in lines)
+
+def test_total_at_or_below_10000_is_not_rounded():
+    lines, total = compute_statement(
+        cfg(cold=False, hot=False, sewage=False, rent="9999.81"),
+        current={"electricity_single": Decimal("0")},
+        previous={"electricity_single": Decimal("0")},
+        tariffs=TARIFFS,
+    )
+    assert total == Decimal("9999.81")
+    assert all(l.code != "rounding" for l in lines)
+
+def test_rounding_disabled_by_checkbox_even_for_large_total():
+    lines, total = compute_statement(
+        cfg(cold=False, hot=False, sewage=False, rent="60047.81", round_total=False),
+        current={"electricity_single": Decimal("0")},
+        previous={"electricity_single": Decimal("0")},
+        tariffs=TARIFFS,
+    )
+    assert total == Decimal("60047.81")
+    assert all(l.code != "rounding" for l in lines)
+
+def test_large_total_rounds_down_to_50():
+    lines, total = compute_statement(
+        cfg(cold=False, hot=False, sewage=False, rent="60097.81"),
+        current={"electricity_single": Decimal("0")},
+        previous={"electricity_single": Decimal("0")},
+        tariffs=TARIFFS,
+    )
+    by = {l.code: l for l in lines}
+    assert by["rounding"].amount == Decimal("-47.81")
+    assert total == Decimal("60050.00")
 
 def test_heat_line_label_shows_volume_and_norm():
     lines, _ = compute_statement(

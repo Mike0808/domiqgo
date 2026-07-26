@@ -97,8 +97,8 @@ def test_first_month_baseline_comes_from_meter_initial_values():
 
     stmt = generate_statement(a, date(2026, 7, 1))
 
-    # (110-100)*48.15 + (1500-1400)*4.87 = 968.50, floored to 50 -> 950
-    assert stmt.total == Decimal("950.00")
+    # (110-100)*48.15 + (1500-1400)*4.87 = 968.50 — below 10 000, not rounded
+    assert stmt.total == Decimal("968.50")
 
 def test_baseline_falls_back_per_meter():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
@@ -113,8 +113,8 @@ def test_baseline_falls_back_per_meter():
 
     stmt = generate_statement(a, date(2026, 7, 1))
 
-    # cold: (110-100)*48.15 = 481.50; elec: (1500-1450)*4.87 = 243.50; 725 -> 700
-    assert stmt.total == Decimal("700.00")
+    # cold: (110-100)*48.15 = 481.50; elec: (1500-1450)*4.87 = 243.50 — not rounded
+    assert stmt.total == Decimal("725.00")
 
 def test_missing_baseline_raises_instead_of_billing_from_zero():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)

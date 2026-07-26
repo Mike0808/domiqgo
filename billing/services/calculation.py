@@ -4,9 +4,11 @@ from enum import Enum
 
 CENT = Decimal("0.01")
 GCAL = Decimal("0.00001")  # heating quantities are shown to 5 decimal places
-# The payable total is floored to a multiple of this (landlord's choice:
-# 60 047.81 -> 60 000; 60 097.81 -> 60 050), with an explicit adjustment line.
+# The payable total is floored to a multiple of ROUND_STEP (landlord's choice:
+# 60 047.81 -> 60 000; 60 097.81 -> 60 050), with an explicit adjustment line —
+# but only when it exceeds ROUND_THRESHOLD and the apartment opts in.
 ROUND_STEP = Decimal("50")
+ROUND_THRESHOLD = Decimal("10000")
 
 def _money(value: Decimal) -> Decimal:
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
@@ -29,6 +31,8 @@ class ApartmentConfig:
     other_fixed: Decimal
     # Гкал на подогрев 1 м³ ГВС (норматив дома); Гкал = объём × норматив.
     gvs_heat_norm: Decimal = Decimal("0")
+    # Округлять итог вниз до 50 ₽ (только свыше ROUND_THRESHOLD).
+    round_total: bool = True
 
 @dataclass(frozen=True)
 class LineItem:
@@ -114,8 +118,11 @@ def compute_statement(config, current, previous, tariffs):
             lines.append(LineItem(code, LABELS[code], None, _money(amount), _money(amount)))
 
     exact = _money(sum((l.amount for l in lines), Decimal("0")))
-    total = _money((exact / ROUND_STEP).to_integral_value(rounding=ROUND_FLOOR) * ROUND_STEP)
-    if total != exact:
-        lines.append(LineItem("rounding", LABELS["rounding"], None,
-                              Decimal("0.00"), _money(total - exact)))
+    total = exact
+    if config.round_total and exact > ROUND_THRESHOLD:
+        total = _money((exact / ROUND_STEP).to_integral_value(rounding=ROUND_FLOOR)
+                       * ROUND_STEP)
+        if total != exact:
+            lines.append(LineItem("rounding", LABELS["rounding"], None,
+                                  Decimal("0.00"), _money(total - exact)))
     return lines, total
