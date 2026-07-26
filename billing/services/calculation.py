@@ -1,9 +1,12 @@
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 from enum import Enum
 
 CENT = Decimal("0.01")
 GCAL = Decimal("0.00001")  # heating quantities are shown to 5 decimal places
+# The payable total is floored to a multiple of this (landlord's choice:
+# 60 047.81 -> 60 000; 60 097.81 -> 60 050), with an explicit adjustment line.
+ROUND_STEP = Decimal("50")
 
 def _money(value: Decimal) -> Decimal:
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
@@ -46,6 +49,7 @@ LABELS = {
     "rent": "Аренда",
     "internet": "Интернет",
     "other_fixed": "Прочее",
+    "rounding": "Округление",
 }
 
 def _consumption(meter: str, current: dict, previous: dict) -> Decimal:
@@ -85,8 +89,11 @@ def compute_statement(config, current, previous, tariffs):
                               hot, cold_rate, _money(hot * cold_rate)))
         heat_qty = (hot * config.gvs_heat_norm).quantize(GCAL, rounding=ROUND_HALF_UP)
         heat_rate = _tariff("hot_water_heat_component", tariffs)
-        lines.append(LineItem("hot_water_heat_component",
-                              LABELS["hot_water_heat_component"],
+        # Spell out the derivation so the tenant sees the volume factor:
+        # the Гкал quantity already equals объём × норматив.
+        heat_label = (f"{LABELS['hot_water_heat_component']}: "
+                      f"{hot} м³ × {config.gvs_heat_norm} Гкал/м³")
+        lines.append(LineItem("hot_water_heat_component", heat_label,
                               heat_qty, heat_rate, _money(heat_qty * heat_rate)))
     if config.has_sewage:
         volume = cold + hot
@@ -106,5 +113,9 @@ def compute_statement(config, current, previous, tariffs):
         if amount and amount > 0:
             lines.append(LineItem(code, LABELS[code], None, _money(amount), _money(amount)))
 
-    total = _money(sum((l.amount for l in lines), Decimal("0")))
+    exact = _money(sum((l.amount for l in lines), Decimal("0")))
+    total = _money((exact / ROUND_STEP).to_integral_value(rounding=ROUND_FLOOR) * ROUND_STEP)
+    if total != exact:
+        lines.append(LineItem("rounding", LABELS["rounding"], None,
+                              Decimal("0.00"), _money(total - exact)))
     return lines, total

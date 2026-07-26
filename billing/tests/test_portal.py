@@ -45,8 +45,16 @@ def test_submit_readings_generates_statement(tenant_setup):
     assert MeterReading.objects.filter(apartment=a, period=period, meter="cold_water",
                                        entered_by_tenant=True).exists()
     stmt = MonthlyStatement.objects.get(apartment=a, period=period)
-    # (110-100)*48.15 + (1500-1400)*4.87 = 481.50 + 487.00
-    assert stmt.total == Decimal("968.50")
+    # (110-100)*48.15 + (1500-1400)*4.87 = 968.50, floored to 50
+    assert stmt.total == Decimal("950.00")
+
+def test_form_prefills_previously_entered_values(tenant_setup):
+    a, u = tenant_setup
+    c = _login(u)
+    assert c.post("/", {"cold_water": "110", "electricity_single": "1500"}).status_code == 302
+    html = c.get("/").content.decode()
+    assert 'value="110.000"' in html
+    assert 'value="1500.000"' in html
 
 def test_backward_reading_is_rejected(tenant_setup):
     a, u = tenant_setup
@@ -169,7 +177,7 @@ def test_first_month_uses_contract_initial_values(db):
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
     assert resp.status_code == 302
     stmt = MonthlyStatement.objects.get(apartment=a)
-    assert stmt.total == Decimal("968.50")
+    assert stmt.total == Decimal("950.00")   # 968.50 floored to 50
 
 def test_missing_baseline_shows_message_not_bill_from_zero(db):
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
