@@ -21,5 +21,6 @@ from django.urls import include, path
 # DEBUG): uploads are private and go through billing.views.media_file instead.
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("accounts/", include("allauth.socialaccount.urls")),
     path("", include("billing.urls")),
 ]
