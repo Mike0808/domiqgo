@@ -1,0 +1,26 @@
+{% extends "billing/base.html" %}
+{% load socialaccount %}
+{% block title %}Способы входа{% endblock %}
+{% block content %}
+<h1 class="mb-6 text-3xl font-bold">Способы входа</h1>
+<section class="rounded-lg border border-line bg-white p-5">
+  <p class="mb-4 text-sm text-ink-soft">
+    Логин и пароль всегда работают. Ниже можно дополнительно подключить вход
+    через Яндекс ID, VK ID или Госуслуги.
+  </p>
+  {% get_providers as socialaccount_providers %}
+  {% for provider in socialaccount_providers %}
+    <div class="mb-2 flex items-center justify-between border-b border-line pb-2">
+      <span class="text-sm">{{ provider.name }}</span>
+      {% if provider.id in connected_provider_ids %}
+        <span class="text-sm font-bold text-paid">Подключено</span>
+      {% else %}
+        <a href="{% provider_login_url provider.id process='connect' %}"
+           class="rounded bg-accent px-3 py-1.5 text-sm font-bold text-white hover:bg-ink">
+          Подключить
+        </a>
+      {% endif %}
+    </div>
+  {% endfor %}
+</section>
+{% endblock %}

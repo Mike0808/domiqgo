@@ -35,6 +35,8 @@
        class="rounded-t px-3 py-2 text-sm {% if url_name == 'history' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">История</a>
     <a href="{% url 'documents' %}"
        class="rounded-t px-3 py-2 text-sm {% if url_name == 'documents' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Документы</a>
+    <a href="{% url 'oauth_connections' %}"
+       class="rounded-t px-3 py-2 text-sm {% if url_name == 'oauth_connections' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Способы входа</a>
   </nav>
   {% endwith %}
   {% endif %}

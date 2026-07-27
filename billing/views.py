@@ -6,6 +6,8 @@ from django.http import Http404
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.static import serve
+from allauth.socialaccount.models import SocialAccount
+from .consent import PRIVACY_POLICY_VERSION
 from .forms import MeterReadingForm
 from .models import Document, MeterReading, MonthlyStatement, Tenant
 from .services.calculation import MissingTariffError
@@ -113,3 +115,23 @@ def media_file(request, path):
             file=path, tenant__user=request.user).exists():
         raise Http404
     return serve(request, path, document_root=settings.MEDIA_ROOT)
+
+@login_required
+def oauth_connections(request):
+    tenant = _tenant_for(request)
+    if tenant is None:
+        return _no_tenant_response(request)
+    if request.method == "POST" and "consent" in request.POST:
+        tenant.privacy_consent_at = timezone.now()
+        tenant.privacy_consent_version = PRIVACY_POLICY_VERSION
+        tenant.save(update_fields=["privacy_consent_at", "privacy_consent_version"])
+        return redirect("oauth_connections")
+    if tenant.privacy_consent_version != PRIVACY_POLICY_VERSION:
+        return render(request, "billing/oauth_consent.html", {})
+    connected_provider_ids = list(
+        SocialAccount.objects.filter(user=request.user).values_list("provider", flat=True))
+    return render(request, "billing/oauth_connections.html",
+                  {"connected_provider_ids": connected_provider_ids})
+
+def privacy_policy(request):
+    return render(request, "billing/privacy_policy.html", {})
