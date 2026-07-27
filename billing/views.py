@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.views.static import serve
 from allauth.socialaccount.models import SocialAccount
 from .consent import PRIVACY_POLICY_VERSION
-from .forms import MeterReadingForm
+from .forms import MeterReadingForm, ConsentForm
 from .models import Document, MeterReading, MonthlyStatement, Tenant
 from .services.calculation import MissingTariffError
 from .services.statements import MissingBaselineError, meters_for, generate_statement
@@ -121,13 +121,15 @@ def oauth_connections(request):
     tenant = _tenant_for(request)
     if tenant is None:
         return _no_tenant_response(request)
-    if request.method == "POST" and "consent" in request.POST:
-        tenant.privacy_consent_at = timezone.now()
-        tenant.privacy_consent_version = PRIVACY_POLICY_VERSION
-        tenant.save(update_fields=["privacy_consent_at", "privacy_consent_version"])
-        return redirect("oauth_connections")
+    form = ConsentForm(request.POST) if request.method == "POST" else ConsentForm()
+    if request.method == "POST":
+        if form.is_valid():
+            tenant.privacy_consent_at = timezone.now()
+            tenant.privacy_consent_version = PRIVACY_POLICY_VERSION
+            tenant.save(update_fields=["privacy_consent_at", "privacy_consent_version"])
+            return redirect("oauth_connections")
     if tenant.privacy_consent_version != PRIVACY_POLICY_VERSION:
-        return render(request, "billing/oauth_consent.html", {})
+        return render(request, "billing/oauth_consent.html", {"form": form})
     connected_provider_ids = list(
         SocialAccount.objects.filter(user=request.user).values_list("provider", flat=True))
     return render(request, "billing/oauth_connections.html",

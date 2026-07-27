@@ -1,4 +1,5 @@
 {% extends "billing/base.html" %}
+{% load crispy_forms_tags %}
 {% block title %}Согласие на обработку персональных данных{% endblock %}
 {% block content %}
 <section class="rounded-lg border border-line bg-white p-5">
@@ -13,10 +14,7 @@
   </p>
   <form method="post">
     {% csrf_token %}
-    <label class="mb-4 flex items-start gap-2 text-sm">
-      <input type="checkbox" name="consent" required class="mt-1">
-      <span>Я ознакомлен(а) и даю согласие на обработку персональных данных.</span>
-    </label>
+    {{ form|crispy }}
     <button type="submit"
             class="rounded bg-accent px-4 py-2.5 font-bold text-white hover:bg-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
       Согласиться и продолжить

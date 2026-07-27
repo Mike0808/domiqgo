@@ -23,3 +23,8 @@ class MeterReadingForm(forms.Form):
                 label = f"{label} — счётчик № {serials[meter]}"
             self.fields[meter] = forms.DecimalField(
                 label=label, min_value=Decimal("0"), max_digits=12, decimal_places=3)
+
+class ConsentForm(forms.Form):
+    consent = forms.BooleanField(
+        label="Я ознакомлен(а) и даю согласие на обработку персональных данных.",
+        required=True)
