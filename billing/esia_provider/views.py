@@ -35,7 +35,7 @@ class ESIAOAuth2Adapter(OAuth2Adapter):
         id_token = kwargs.get("response", {}).get("id_token", "")
         claims = _decode_id_token_payload(id_token) if id_token else {}
         oid = claims.get("urn:esia:sbj_id") or claims.get("sub") or ""
-        extra_data = {"oid": oid, **claims}
+        extra_data = {**claims, "oid": oid}
         return self.get_provider().sociallogin_from_response(request, extra_data)
 
 oauth2_login = OAuth2LoginView.adapter_view(ESIAOAuth2Adapter)

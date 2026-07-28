@@ -50,6 +50,14 @@ docker compose exec web python manage.py createsuperuser
 Check: `https://domiq-ufa.ru/login/` (tenant portal) and
 `https://domiq-ufa.ru/admin/` (landlord back-office).
 
+Once, after this first deploy, point Django's `Site` row (id=1, used by
+allauth for absolute-URL generation) at the real domain — it defaults to
+`example.com` from the `sites` migration:
+
+```bash
+docker compose exec web python manage.py shell -c "from django.contrib.sites.models import Site; Site.objects.update_or_create(id=1, defaults={'domain': 'domiq-ufa.ru', 'name': 'domiq-ufa.ru'})"
+```
+
 ## 3. Wire up the existing wg-easy container
 
 The wireguard/wg-easy container is preinstalled on the host and is *not*

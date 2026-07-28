@@ -129,11 +129,12 @@ def oauth_connections(request):
             tenant.save(update_fields=["privacy_consent_at", "privacy_consent_version"])
             return redirect("oauth_connections")
     if tenant.privacy_consent_version != PRIVACY_POLICY_VERSION:
-        return render(request, "billing/oauth_consent.html", {"form": form})
+        return render(request, "billing/oauth_consent.html",
+                       {"form": form, "policy_version": PRIVACY_POLICY_VERSION})
     connected_provider_ids = list(
         SocialAccount.objects.filter(user=request.user).values_list("provider", flat=True))
     return render(request, "billing/oauth_connections.html",
                   {"connected_provider_ids": connected_provider_ids})
 
 def privacy_policy(request):
-    return render(request, "billing/privacy_policy.html", {})
+    return render(request, "billing/privacy_policy.html", {"policy_version": PRIVACY_POLICY_VERSION})
