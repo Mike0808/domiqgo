@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.yandex",
     "allauth.socialaccount.providers.vk",
     "billing",
+    "billing.esia_provider",
 ]
 
 SITE_ID = 1

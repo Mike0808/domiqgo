@@ -25,3 +25,8 @@ def test_vk_login_url_redirects_toward_provider_not_404():
     resp = Client().get("/accounts/vk/login/")
     assert resp.status_code == 302
     assert resp.status_code != 404
+
+def test_esia_login_url_redirects_toward_provider_not_404():
+    resp = Client().get("/accounts/esia/login/")
+    assert resp.status_code == 302
+    assert resp.status_code != 404
