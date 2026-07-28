@@ -11,6 +11,7 @@ dependencies = [
     "crispy-tailwind>=1",
     "gunicorn>=23",
     "requests>=2,<3",
+    "django-allauth>=65,<66",
 ]
 
 [project.optional-dependencies]

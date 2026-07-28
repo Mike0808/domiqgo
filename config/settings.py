@@ -39,10 +39,19 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.sites",
     "crispy_forms",
     "crispy_tailwind",
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.yandex",
+    "allauth.socialaccount.providers.vk",
     "billing",
+    "billing.esia_provider",
 ]
+
+SITE_ID = 1
 
 CRISPY_ALLOWED_TEMPLATE_PACKS = "tailwind"
 CRISPY_TEMPLATE_PACK = "tailwind"
@@ -56,6 +65,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -210,3 +220,62 @@ if not DEBUG:
 # Messenger bot (Plan 2)
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+
+# OAuth login (Yandex ID / VK ID / Gosuslugi) — additive to password login.
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
+]
+
+SOCIALACCOUNT_ADAPTER = "billing.adapters.NoSignupSocialAccountAdapter"
+SOCIALACCOUNT_AUTO_SIGNUP = False
+SOCIALACCOUNT_LOGIN_ON_GET = True
+
+# OAuth providers. Client credentials come from each provider's own app
+# registration console; test values are fine for local dev (the redirect
+# still 302s toward the real provider — only completing a real login
+# requires real, registered credentials).
+SOCIALACCOUNT_PROVIDERS = {
+    "yandex": {
+        "APP": {
+            "client_id": os.environ.get("YANDEX_CLIENT_ID", ""),
+            "secret": os.environ.get("YANDEX_CLIENT_SECRET", ""),
+        },
+    },
+    "vk": {
+        "APP": {
+            "client_id": os.environ.get("VK_CLIENT_ID", ""),
+            "secret": os.environ.get("VK_CLIENT_SECRET", ""),
+        },
+    },
+    "esia": {
+        "APP": {
+            "client_id": os.environ.get("ESIA_CLIENT_ID", ""),
+            "secret": os.environ.get("ESIA_CLIENT_SECRET", ""),
+        },
+        # Deliberately minimal: broader ESIA scopes (full name, SNILS, email)
+        # require every authorization request to carry a PKCS#7 signature
+        # made with a GOST-2012-256 certificate registered with the
+        # ministry. "openid" alone (just a stable person identifier) avoids
+        # that requirement entirely — see the design spec.
+        "SCOPE": ["openid"],
+    },
+}
+
+# Госуслуги (ESIA) sandbox by default — fail obviously rather than talking
+# to production ESIA from a misconfigured deployment. Switch to
+# https://esia.gosuslugi.ru once accredited with real production credentials.
+ESIA_BASE_URL = os.environ.get("ESIA_BASE_URL", "https://esia-portal1.test.gosuslugi.ru")
+ESIA_ALLOW_UNVERIFIED_SIGNATURE = os.environ.get("ESIA_ALLOW_UNVERIFIED_SIGNATURE", "0") == "1"
+
+# billing/esia_provider decodes the ESIA id_token WITHOUT verifying its
+# cryptographic signature (no verification certificate until real ESIA
+# accreditation). Refuse to boot against production Gosuslugi with that gap
+# open unless the deployer has explicitly acknowledged the risk.
+if not DEBUG and "esia-portal1.test" not in ESIA_BASE_URL and not ESIA_ALLOW_UNVERIFIED_SIGNATURE:
+    raise ImproperlyConfigured(
+        "ESIA_BASE_URL points at production Gosuslugi but id_token signature "
+        "verification is not implemented (see billing/esia_provider/views.py). "
+        "Set ESIA_ALLOW_UNVERIFIED_SIGNATURE=1 only after you have reviewed "
+        "and accepted this risk, or keep ESIA_BASE_URL pointed at the sandbox."
+    )
