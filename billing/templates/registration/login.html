@@ -27,10 +27,10 @@
        class="block w-full rounded border border-line px-4 py-2 text-center text-sm hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">Яндекс ID</a>
     <a href="{% provider_login_url 'vk' %}"
        class="block w-full rounded border border-line px-4 py-2 text-center text-sm hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">VK ID</a>
-    {# Hardcoded, not {% provider_login_url 'esia' %}: ESIA's provider class
-       isn't registered with allauth until billing.esia_provider is added
-       (a later task) — provider_login_url would raise ImproperlyConfigured
-       until then. This must match ESIAProvider.id ("esia") once it lands. #}
+    {# Hardcoded, not the usual provider-login-url templatetag: ESIA's provider
+       class isn't registered with allauth until billing.esia_provider is added
+       (a later task) — the templatetag would raise ImproperlyConfigured until
+       then. This path must match ESIAProvider.id ("esia") once it lands. #}
     <a href="/accounts/esia/login/"
        class="block w-full rounded border border-line px-4 py-2 text-center text-sm hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">Госуслуги</a>
   </div>
