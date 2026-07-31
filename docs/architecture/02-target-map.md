@@ -50,8 +50,10 @@ Identity ← Tenancy → Properties
         (все) → Reporting
 ```
 
-Связь Metering → Properties (норматив подогрева ГВС) на схеме не
-зафиксирована: она зависит от нерешённого вопроса §7.1.
+Связь Metering → Properties (норматив подогрева ГВС) на схеме отсутствует
+окончательно: [спецификация Metering](modules/metering.md) от норматива
+отказалась — его не измеряет ни один прибор. Metering, как и Tariffs, ни от
+кого не зависит. Открытым остаётся лишь то, кто нормативом владеет (§7.1).
 
 Правило: **Reporting — лист графа.** От него не зависит никто, поэтому
 его связность со всеми остальными односторонняя и цикл создать нельзя.
@@ -252,7 +254,7 @@ read-контракт.
 |---|---|---|---|---|
 | `TenancyStarted` | Tenancy | tenancy_id, apartment_id, user_id, started_on, terms{rent, internet, other} | Billing | Analytics (occupancy) |
 | `TenancyEnded` | Tenancy | tenancy_id, apartment_id, ended_on | Billing, Notifications | Analytics, Maintenance |
-| `MeterReadingRecorded` | Metering | apartment_id, meter_kind, period, value, recorded_by, recorded_at | Billing (пересчёт) | Analytics, AI (аномалии) |
+| `MeterReadingsSubmitted` | Metering | apartment_id, period, meter_kinds, recorded_by, recorded_at | Billing (пересчёт) | Analytics, AI (аномалии) |
 | `TariffVersionPublished` | Tariffs | utility, rate, effective_from, source_url | — | Automation (массовый пересчёт) |
 | `InvoiceIssued` | Billing | invoice_id, tenancy_id, apartment_id, period, total, issued_at | Notifications | Automation, Maintenance |
 | `InvoiceRecalculated` | Billing | invoice_id, period, old_total, new_total | Notifications | Analytics |
@@ -303,12 +305,17 @@ JOIN на чужие таблицы запрещён. Минимальный н�
 
 1. **Гкал для двухкомпонентного ГВС.** `calculation.py:85-101` умножает объём
    ГВС на `gvs_heat_norm` квартиры. Конверсия «объём → тепло» метрологическая
-   или тарифная? Склоняемся к Metering (норматив — свойство дома, живёт в
-   Properties), но это создаёт зависимость Metering → Properties.
+   или тарифная? *Уточнено спецификацией Metering:* не метрологическая —
+   норматив не измеряется прибором, и Metering от него отказался. Остаются
+   Properties (свойство системы теплоснабжения дома) и Tariffs (публикуется
+   постановлением, versioned по дате — по форме это тарифная величина, но
+   подомовая, что конфликтует с ключом тарифной линии).
 2. **Кто закрывает период для ввода показаний.** `views.py:40` блокирует ввод
    по статусу `pending`/`paid`. Раз `pending` уходит из Billing, правило надо
-   переформулировать, и неочевидно, чьё оно: Metering («период закрыт») или
-   Billing («счёт выставлен»).
+   переформулировать. *Предложение спецификации Metering:* замком владеет
+   Metering, ставит его Billing командой — обратный вызов замкнул бы цикл
+   Billing ↔ Metering. Открытым остаётся момент закрытия, а он принадлежит
+   Billing.
 3. **Съезд в середине месяца.** На P1 фиксируем «Tenancy на весь месяц»;
    пропорциональное деление — P2.
 
@@ -317,7 +324,7 @@ JOIN на чужие таблицы запрещён. Минимальный н�
 ## 8. Проверка по роадмапу
 
 **P2 (инвестор, до ~10 объектов).** Analytics строится на
-`MeterReadingRecorded`, `InvoiceIssued`/`InvoiceSettled`,
+`MeterReadingsSubmitted`, `InvoiceIssued`/`InvoiceSettled`,
 `TenancyStarted`/`TenancyEnded` — доходность, occupancy и просрочки
 собираются без единого JOIN в чужие таблицы. Documents включается как
 углубление уже зафиксированной границы. Смена арендаторов не ломает
