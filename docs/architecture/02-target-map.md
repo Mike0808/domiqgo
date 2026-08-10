@@ -109,6 +109,13 @@ Notifications также ни от кого не требует ответа —
 находится на том же уровне, что `views.py`: это способ доставки запроса,
 а не предметная область.
 
+*Уточняется спецификацией [Identity](modules/identity.md):* `LinkChannel`
+предлагается разделить на `Identity.RedeemLinkCode` (чья это запись) и
+`Notifications.BindChannel` (куда слать), иначе Identity начинает хранить
+адрес доставки. Это согласуется с таблицей выше, которая уже делит
+`services/linking.py` между двумя модулями, но расходится с именем команды
+здесь. Решение затрагивает Notifications и вынесено в ADR.
+
 ---
 
 ## 3. Четыре ключевых решения брифа
@@ -269,9 +276,16 @@ read-контракт.
 | `PaymentRejected` | Payments | payment_id, invoice_id, reason, rejected_at | Billing, Notifications | — |
 | `PrivacyConsentGranted` | Identity | user_id, policy_version, granted_at | — | аудит 152-ФЗ |
 
-Событий не публикуют: Properties, Documents, Notifications и Reporting —
-у них нет подписчиков. Notifications только подписывается, Reporting
-только читает через Query Services.
+Событий не публикуют: Documents, Notifications и Reporting. Notifications
+только подписывается, Reporting только читает через Query Services.
+
+*Уточнено спецификацией [Properties](modules/properties.md):* Properties
+всё-таки публикует — `PropertyRegistered`,
+`PropertyServiceCompositionChanged`, `PropertyDecommissioned` и
+`PropertyRecommissioned`. Подписчик в P1 есть только у двух последних:
+Tenancy не должен начинать договор на объекте, выведенном из эксплуатации,
+а проверить это сам Properties не может — обращение к Tenancy замкнуло бы
+цикл.
 
 **`PaymentOverdue` — единственное временно́е событие.** Его никто не
 «совершает», оно наступает от того, что прошло время. Нужен периодический
@@ -292,7 +306,7 @@ JOIN на чужие таблицы запрещён. Минимальный н�
 
 | Модуль | Запрос | Отдаёт |
 |---|---|---|
-| Identity | `GetUser(user_id)` | имя учётной записи, статус согласия |
+| Identity | `GetAccount(account_id)` | имя входа, тип записи, статус, есть ли действующее согласие |
 | Properties | `GetApartment(apartment_id)` | метка, состав услуг, норматив ГВС |
 | Tenancy | `GetTenancyFor(apartment_id, period)` | tenancy_id, user_id, фиксированные условия |
 | Metering | `GetConsumption(apartment_id, period)` | по прибору: consumed, from_value, to_value |
