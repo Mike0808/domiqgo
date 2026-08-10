@@ -265,6 +265,7 @@ read-контракт.
 |---|---|---|---|---|
 | `TenancyStarted` | Tenancy | tenancy_id, apartment_id, user_id, started_on, terms{rent, internet, other} | Billing | Analytics (occupancy) |
 | `TenancyEnded` | Tenancy | tenancy_id, apartment_id, ended_on | Billing, Notifications | Analytics, Maintenance |
+| `TenancyCorrected` | Tenancy | tenancy_id, apartment_id, что изменилось, прежние и новые значения | Billing (пометить счета к пересмотру) | Analytics |
 | `MeterReadingsSubmitted` | Metering | apartment_id, period, meter_kinds, recorded_by, recorded_at | Billing (пересчёт) | Analytics, AI (аномалии) |
 | `TariffVersionPublished` | Tariffs | utility, rate, effective_from, source_url | — | Automation (массовый пересчёт) |
 | `InvoiceIssued` | Billing | invoice_id, tenancy_id, apartment_id, period, total, issued_at | Notifications | Automation, Maintenance |
@@ -336,8 +337,14 @@ JOIN на чужие таблицы запрещён. Минимальный н�
    Metering, ставит его Billing командой — обратный вызов замкнул бы цикл
    Billing ↔ Metering. Открытым остаётся момент закрытия, а он принадлежит
    Billing.
-3. **Съезд в середине месяца.** На P1 фиксируем «Tenancy на весь месяц»;
-   пропорциональное деление — P2.
+3. **Съезд в середине месяца.** *Уточнено спецификацией
+   [Tenancy](modules/tenancy.md):* счёт за период выставляется договору,
+   действовавшему **на дату начала периода** — то же правило и та же
+   формулировка, что для выбора версии тарифа в
+   [ADR-0004](adr/0004-tariff-version-period-resolution.md). Одно правило на
+   две сущности проще объяснить, а предписанная ADR-0004 структура «период →
+   список отрезков» допускает пропорциональное деление в P2 без переписывания.
+   Осталось оформить ADR.
 
 ---
 
