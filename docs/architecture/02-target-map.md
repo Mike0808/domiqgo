@@ -45,7 +45,7 @@ Reporting выгружает то, что уже есть. Для аудитор
 
 Tenancy       → Identity, Properties
 Billing       → Tenancy, Properties, Metering, Tariffs
-Payments      → Billing                        (уточняется спецификацией Payments)
+Payments      → Billing                        (только «какие счета не погашены»)
 Notifications → никого: только подписчик событий
 Reporting     → все, но от него не зависит никто
 ```
@@ -58,6 +58,12 @@ Reporting     → все, но от него не зависит никто
 
 **Четыре листа графа.** Identity, Properties, Metering и Tariffs не обращаются
 ни к кому: их можно выделить в сервисы первыми и в любом порядке.
+
+**Единственное место, где два модуля смотрят друг на друга, — Billing и
+Payments,** и цикла там нет только потому, что направления разной природы:
+Payments вызывает Billing синхронно, а Billing узнаёт о платежах исключительно
+из событий, держа собственную проекцию оплаченного. Соглашение хрупкое и
+описано в [Payments](modules/payments.md) как его главный риск.
 
 Правило: **Reporting — лист с другой стороны.** От него не зависит никто,
 поэтому его связность со всеми остальными односторонняя и цикл создать нельзя.
@@ -274,7 +280,8 @@ read-контракт.
 | `PaymentOverdue` | Billing | invoice_id, tenancy_id, period, total, due_date, days_overdue | Notifications | Automation (эскалации) |
 | `PaymentSubmitted` | Payments | payment_id, invoice_id, source, submitted_at | Notifications (владельцу) | — |
 | `PaymentConfirmed` | Payments | payment_id, invoice_id, amount, confirmed_at | Billing (сверка) | Analytics |
-| `PaymentRejected` | Payments | payment_id, invoice_id, reason, rejected_at | Billing, Notifications | — |
+| `PaymentRejected` | Payments | payment_id, invoice_id, reason, rejected_at | Notifications | — |
+| `PaymentVoided` | Payments | payment_id, invoice_id, отменённая сумма, reason, voided_at | Billing (пересчёт сверки), Notifications | Analytics |
 | `PrivacyConsentGranted` | Identity | user_id, policy_version, granted_at | — | аудит 152-ФЗ |
 
 Событий не публикуют: Documents, Notifications и Reporting. Notifications
