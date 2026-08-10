@@ -269,13 +269,14 @@ read-контракт.
 
 | Событие | Издатель | Payload | Подписчики P1 | Задел P2–P3 |
 |---|---|---|---|---|
-| `TenancyStarted` | Tenancy | tenancy_id, apartment_id, user_id, started_on, terms{rent, internet, other} | Billing | Analytics (occupancy) |
-| `TenancyEnded` | Tenancy | tenancy_id, apartment_id, ended_on | Billing, Notifications | Analytics, Maintenance |
+| `TenancyStarted` | Tenancy | tenancy_id, apartment_id, user_id, started_on, terms{rent, internet, other} | P1: никто | Analytics (occupancy) |
+| `TenancyEnded` | Tenancy | tenancy_id, apartment_id, ended_on | Notifications | Analytics, Maintenance |
 | `TenancyCorrected` | Tenancy | tenancy_id, apartment_id, что изменилось, прежние и новые значения | Billing (пометить счета к пересмотру) | Analytics |
 | `MeterReadingsSubmitted` | Metering | apartment_id, period, meter_kinds, recorded_by, recorded_at | Billing (пересчёт) | Analytics, AI (аномалии) |
 | `TariffVersionPublished` | Tariffs | utility, rate, effective_from, source_url | — | Automation (массовый пересчёт) |
 | `InvoiceIssued` | Billing | invoice_id, tenancy_id, apartment_id, period, total, issued_at | Notifications | Automation, Maintenance |
-| `InvoiceRecalculated` | Billing | invoice_id, period, old_total, new_total | Notifications | Analytics |
+| `InvoiceRevised` | Billing | invoice_id, period, old_total, new_total, причина, номер ревизии | Notifications | Analytics |
+| `InvoiceCancelled` | Billing | invoice_id, period, причина, cancelled_at | Notifications | — |
 | `InvoiceSettled` | Billing | invoice_id, tenancy_id, period, total, settled_at | Notifications | Analytics (доходность) |
 | `PaymentOverdue` | Billing | invoice_id, tenancy_id, period, total, due_date, days_overdue | Notifications | Automation (эскалации) |
 | `PaymentSubmitted` | Payments | payment_id, invoice_id, source, submitted_at | Notifications (владельцу) | — |
