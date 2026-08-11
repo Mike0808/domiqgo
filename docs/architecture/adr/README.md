@@ -1,0 +1,96 @@
+# Architecture Decision Records — указатель
+
+Здесь оформлены все решения из «открытых вопросов» девяти спецификаций модулей
+и трёх вопросов §7 карты. Семь вопросов были подняты с двух сторон
+одновременно — из спецификаций двух соседних модулей; такие записи указаны один
+раз. Итого 22 различных вопроса, из них 0001–0002 приняты до начала переработки.
+
+## По номерам
+
+| ADR | Решение | Модули |
+|---|---|---|
+| [0001](0001-frontend-stack-p1.md) | Стек фронтенда P1 | — |
+| [0002](0002-plugin-model-open-core.md) | Плагинная модель, open core | — |
+| [0003](0003-service-code-vocabularies.md) | Три независимых словаря кодов вместо общего enum | Tariffs, Metering, Billing |
+| [0004](0004-tariff-version-period-resolution.md) | Версия тарифа выбирается на дату начала периода | Billing, Tariffs |
+| [0005](0005-retroactive-tariff-correction.md) | Исправление задним числом не пересчитывает счета молча | Billing, Tariffs |
+| [0006](0006-electricity-meter-zones-ownership.md) | Число тарифных зон принадлежит Metering | Metering, Properties |
+| [0007](0007-gvs-heat-norm-ownership.md) | Норматив подогрева ГВС принадлежит Properties | Properties, Metering, Tariffs, Billing |
+| [0008](0008-property-configuration-not-versioned.md) | Конфигурация объекта не версионируется | Properties, Billing |
+| [0009](0009-property-decommission-and-active-tenancy.md) | Вывод объекта не прекращает действующий договор | Properties, Tenancy |
+| [0010](0010-full-name-belongs-to-tenancy.md) | ФИО — реквизит стороны договора | Tenancy, Identity |
+| [0011](0011-one-tenant-per-tenancy.md) | У договора одна учётная запись жильца | Tenancy, Identity, Billing, Notifications |
+| [0012](0012-metering-period-lock.md) | Замком периода владеет Metering, ставит Billing при выставлении | Metering, Billing |
+| [0013](0013-due-date-is-billing-policy.md) | Срок оплаты — политика Billing | Billing, Tenancy |
+| [0014](0014-payment-to-invoice-allocation.md) | Счёт назначается платежу при регистрации | Payments, Billing |
+| [0015](0015-settlement-projection-in-billing.md) | Признанные оплаты — перестраиваемая проекция в Billing | Billing, Payments |
+| [0016](0016-overpayment-not-carried-forward.md) | Переплата фиксируется, но не переносится | Billing, Payments |
+| [0017](0017-link-code-and-channel-binding-split.md) | Погашение кода и привязка канала — две команды | Identity, Notifications |
+| [0018](0018-email-address-belongs-to-notifications.md) | Адрес почты — канал доставки | Notifications, Identity |
+| [0019](0019-notifications-reads-for-message-text.md) | Notifications читает Tenancy и Properties | Notifications, Tenancy, Properties |
+| [0020](0020-esia-signature-verification.md) | Госуслуги — способ входа только с проверкой подписи | Identity |
+| [0021](0021-export-is-not-a-backup.md) | Полная выгрузка не является резервной копией | Reporting |
+| [0022](0022-documents-metadata-in-export.md) | В выгрузке метаданные документов, но не файлы | Reporting, Documents |
+| [0023](0023-export-authorization-in-application-layer.md) | Право на выгрузку проверяет прикладной слой | Reporting, Identity |
+| [0024](0024-tenancy-of-record-for-period.md) | Счёт выставляется договору на дату начала периода | Tenancy, Billing |
+
+## По модулям — какой вопрос спецификации чем закрыт
+
+| Модуль | Вопрос спецификации | ADR |
+|---|---|---|
+| Tariffs | №1 общий словарь кодов | 0003 |
+| Tariffs | №2 смена тарифа в середине периода | 0004 |
+| Tariffs | №3 исправление задним числом | 0005 |
+| Metering | №1 число тарифных зон | 0006 |
+| Metering | №2 норматив подогрева ГВС | 0007 |
+| Metering | №3 кто закрывает период | 0012 |
+| Properties | №1 число тарифных зон | 0006 |
+| Properties | №2 норматив подогрева ГВС | 0007 |
+| Properties | №3 вывод объекта при действующем договоре | 0009 |
+| Properties | №4 версионирование конфигурации | 0008 |
+| Identity | №1 кому принадлежит ФИО | 0010 |
+| Identity | №2 разделение `LinkChannel` | 0017 |
+| Identity | №3 вход через Госуслуги | 0020 |
+| Tenancy | №1 кому принадлежит ФИО | 0010 |
+| Tenancy | №2 договор при выводе объекта | 0009 |
+| Tenancy | №3 один договор — один жилец | 0011 |
+| Payments | №1 кто выбирает счёт для платежа | 0014 |
+| Payments | №2 источник истины по оплаченному | 0015 |
+| Payments | №3 переплата | 0016 |
+| Billing | №1 где живёт срок оплаты | 0013 |
+| Billing | №2 переплата | 0016 |
+| Billing | №3 момент закрытия периода | 0012 |
+| Notifications | №1 разделение `LinkChannel` | 0017 |
+| Notifications | №2 зависимости Notifications | 0019 |
+| Notifications | №3 адрес электронной почты | 0018 |
+| Reporting | №1 выгрузка как резервная копия | 0021 |
+| Reporting | №2 метаданные документов | 0022 |
+| Reporting | №3 право на выгрузку | 0023 |
+| карта §7.1 | Гкал для двухкомпонентного ГВС | 0007 |
+| карта §7.2 | кто закрывает период | 0012 |
+| карта §7.3 | съезд в середине месяца | 0024 |
+
+Открытых вопросов фазы 1 не осталось.
+
+## Решения, требующие правок в `02-target-map.md`
+
+| ADR | Что в карте перестаёт быть верным |
+|---|---|
+| 0006 | §2: `electricity_meter_type` закреплён за Properties |
+| 0015 | §6: `GetConfirmedTotal` приписан Billing как вызывающему |
+| 0019 | §2: Notifications значится модулем без зависимостей *(правка внесена)* |
+| 0023 | §4: состав `ExportRun` не включает инициатора |
+
+## Решения с изменением наблюдаемого поведения
+
+Эти ADR обязаны попасть в план миграции (фаза 3) отдельными пунктами и в
+примечания к релизу:
+
+- [0011](0011-one-tenant-per-tenancy.md) — один жилец на договор: в установке,
+  где супруги входят по отдельности, второй потеряет доступ;
+- [0012](0012-metering-period-lock.md) — блокировка показаний смещается с
+  оплаты на выставление счёта;
+- [0007](0007-gvs-heat-norm-ownership.md) — обязательный норматив ГВС: суммы
+  новых счетов вырастут там, где он не был заполнен;
+- [0024](0024-tenancy-of-record-for-period.md) — переезд в середине месяца
+  относит весь месяц на прежнего жильца.

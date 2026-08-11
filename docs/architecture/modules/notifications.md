@@ -205,6 +205,11 @@ Service — ровно как предписывает бриф. Событие 
 
 ## Открытые вопросы → ADR
 
+**Все вопросы этого раздела закрыты** — №1 → [ADR-0017](../adr/0017-link-code-and-channel-binding-split.md), №2 → [ADR-0019](../adr/0019-notifications-reads-for-message-text.md), №3 → [ADR-0018](../adr/0018-email-address-belongs-to-notifications.md).
+Формулировки «требует ADR» ниже сохранены как обоснование того, зачем
+решение выносилось за пределы спецификации. Полный перечень —
+[указатель ADR](../adr/README.md).
+
 1. **Разделение `LinkChannel`.** Открыт спецификацией [Identity](identity.md)
    (вопрос №2). **Предложение принято:** `Identity.RedeemLinkCode` отвечает,
    чья это запись, `Notifications.BindChannel` — куда слать. Требует ADR,
