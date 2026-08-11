@@ -80,6 +80,43 @@ forbidden_modules =
     django.db
 
 ; --------------------------------------------------------------------------
+; Правило 3.5: оркестрация работает через порты, иначе подменить хранилище
+; в тесте невозможно. Заодно покрывает случай, когда domain или application
+; тянут infrastructure чужого модуля.
+[importlinter:contract:application-does-not-touch-infrastructure]
+name = domain и application не импортируют infrastructure
+type = forbidden
+source_modules =
+    modules.identity.domain
+    modules.identity.application
+    modules.properties.domain
+    modules.properties.application
+    modules.tenancy.domain
+    modules.tenancy.application
+    modules.metering.domain
+    modules.metering.application
+    modules.tariffs.domain
+    modules.tariffs.application
+    modules.billing.domain
+    modules.billing.application
+    modules.payments.domain
+    modules.payments.application
+    modules.notifications.domain
+    modules.notifications.application
+    modules.reporting.domain
+    modules.reporting.application
+forbidden_modules =
+    modules.identity.infrastructure
+    modules.properties.infrastructure
+    modules.tenancy.infrastructure
+    modules.metering.infrastructure
+    modules.tariffs.infrastructure
+    modules.billing.infrastructure
+    modules.payments.infrastructure
+    modules.notifications.infrastructure
+    modules.reporting.infrastructure
+
+; --------------------------------------------------------------------------
 [importlinter:contract:no-legacy-app-from-modules]
 name = Модули не тянут устаревающее приложение billing
 type = forbidden
