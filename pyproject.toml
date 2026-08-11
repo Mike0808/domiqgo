@@ -23,6 +23,9 @@ postgres = ["psycopg[binary]>=3"]
 dev = [
     "pytest>=8",
     "pytest-django>=4",
+    # Контракты границ модулей (.importlinter). Правила, не требующие
+    # инструмента, продублированы в tests/architecture/ на stdlib.
+    "import-linter>=2",
 ]
 
 [tool.uv]

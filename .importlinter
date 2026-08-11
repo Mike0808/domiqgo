@@ -1,0 +1,89 @@
+; Контракты границ Domiq — шаг A2 плана миграции
+; docs/architecture/04-migration-plan.md
+;
+; Разделение с tests/architecture/:
+;   здесь          — слои внутри модуля и чистота domain от фреймворков;
+;   в тестах       — запрет импортировать внутренности чужого модуля
+;                    (правило переборное, его удобнее выразить обходом дерева).
+;
+; Приложение billing/ под контракты НЕ подпадает: оно объявлено устаревающим
+; слоем и проверяется только после расформирования (§2 плана миграции).
+
+[importlinter]
+root_packages =
+    modules
+include_external_packages = True
+
+; --------------------------------------------------------------------------
+[importlinter:contract:layers]
+name = Слои внутри модуля: api → application → domain
+type = layers
+layers =
+    api
+    application
+    domain
+containers =
+    modules.identity
+    modules.properties
+    modules.tenancy
+    modules.metering
+    modules.tariffs
+    modules.billing
+    modules.payments
+    modules.notifications
+    modules.reporting
+
+; --------------------------------------------------------------------------
+[importlinter:contract:domain-purity]
+name = domain не знает о фреймворках
+type = forbidden
+source_modules =
+    modules.identity.domain
+    modules.properties.domain
+    modules.tenancy.domain
+    modules.metering.domain
+    modules.tariffs.domain
+    modules.billing.domain
+    modules.payments.domain
+    modules.notifications.domain
+    modules.reporting.domain
+forbidden_modules =
+    django
+    allauth
+    requests
+    celery
+
+; --------------------------------------------------------------------------
+[importlinter:contract:orm-only-in-infrastructure]
+name = ORM только в infrastructure
+type = forbidden
+source_modules =
+    modules.identity.domain
+    modules.identity.application
+    modules.properties.domain
+    modules.properties.application
+    modules.tenancy.domain
+    modules.tenancy.application
+    modules.metering.domain
+    modules.metering.application
+    modules.tariffs.domain
+    modules.tariffs.application
+    modules.billing.domain
+    modules.billing.application
+    modules.payments.domain
+    modules.payments.application
+    modules.notifications.domain
+    modules.notifications.application
+    modules.reporting.domain
+    modules.reporting.application
+forbidden_modules =
+    django.db
+
+; --------------------------------------------------------------------------
+[importlinter:contract:no-legacy-app-from-modules]
+name = Модули не тянут устаревающее приложение billing
+type = forbidden
+source_modules =
+    modules
+forbidden_modules =
+    billing

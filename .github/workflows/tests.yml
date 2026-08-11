@@ -1,0 +1,42 @@
+name: tests
+
+# Шаг A0 плана миграции: прогон вне машины разработчика.
+# docs/architecture/04-migration-plan.md
+#
+# План состоит из двух десятков шагов, каждый из которых обязан оставлять
+# систему рабочей. Без автоматического прогона это надежда на дисциплину.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    env:
+      # Остальное берётся из значений по умолчанию config/settings.py:
+      # DEBUG=1, dev-ключ, ALLOWED_HOSTS=localhost. Ставить DEBUG=0 нельзя —
+      # тогда сработает предохранитель, требующий настоящий SECRET_KEY.
+      DB_ENGINE: sqlite
+      SQLITE_PATH: /tmp/ci-db.sqlite3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Установить uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Установить зависимости
+        run: uv sync --group dev
+
+      - name: Тесты
+        run: uv run pytest -q
+
+      - name: Контракты границ модулей
+        run: uv run lint-imports
