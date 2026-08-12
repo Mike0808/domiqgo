@@ -35,10 +35,10 @@ jobs:
       - name: Установить зависимости
         run: uv sync --group dev
 
-      # Вывод инструментов дублируется в сводку задания намеренно: логи прогона
-      # закрыты для всех, кроме администратора репозитория, а сводка доступна
-      # через публичный API. Прогон, причину падения которого нельзя прочитать,
-      # страховочной сеткой не является.
+      # Причина падения выносится в аннотацию намеренно: логи прогона и сводка
+      # задания закрыты для всех, кроме администратора репозитория, а аннотации
+      # отдаются публичным API. Прогон, причину падения которого нельзя
+      # прочитать, страховочной сеткой не является.
       - name: Тесты
         shell: bash
         run: |
@@ -46,10 +46,7 @@ jobs:
           uv run pytest -q > /tmp/pytest.log 2>&1
           status=$?
           cat /tmp/pytest.log
-          if [ $status -ne 0 ]; then
-            { echo '## pytest'; echo; echo '```'; tail -n 60 /tmp/pytest.log; echo '```'; } \
-              >> "$GITHUB_STEP_SUMMARY"
-          fi
+          [ $status -ne 0 ] && .github/annotate.sh pytest /tmp/pytest.log
           exit $status
 
       - name: Контракты границ модулей
@@ -59,6 +56,5 @@ jobs:
           uv run lint-imports > /tmp/lint.log 2>&1
           status=$?
           cat /tmp/lint.log
-          { echo '## lint-imports'; echo; echo '```'; cat /tmp/lint.log; echo '```'; } \
-            >> "$GITHUB_STEP_SUMMARY"
+          [ $status -ne 0 ] && .github/annotate.sh lint-imports /tmp/lint.log
           exit $status
