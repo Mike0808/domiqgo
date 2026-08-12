@@ -71,32 +71,14 @@ forbidden_modules =
     allauth
     requests
 
-; --------------------------------------------------------------------------
-[importlinter:contract:orm-only-in-infrastructure]
-name = ORM только в infrastructure
-type = forbidden
-source_modules =
-    modules.identity.domain
-    modules.identity.application
-    modules.properties.domain
-    modules.properties.application
-    modules.tenancy.domain
-    modules.tenancy.application
-    modules.metering.domain
-    modules.metering.application
-    modules.tariffs.domain
-    modules.tariffs.application
-    modules.billing.domain
-    modules.billing.application
-    modules.payments.domain
-    modules.payments.application
-    modules.notifications.domain
-    modules.notifications.application
-    modules.reporting.domain
-    modules.reporting.application
-forbidden_modules =
-    django.db
-
+; Контракта «ORM только в infrastructure» здесь нет и быть не может:
+; import-linter отвергает `django.db` — «subpackages of external packages are
+; not valid», проверено прогоном 31603387708. Запретить `django` целиком было
+; бы другим, более строгим правилом, чем принятое (3.2 запрещает ORM, а не
+; фреймворк), и вводить его молча нельзя. Правило проверяется
+; tests/architecture/test_domain_purity.py, где анализ текстовый и это
+; ограничение не действует.
+;
 ; --------------------------------------------------------------------------
 ; Правило 3.5: оркестрация работает через порты, иначе подменить хранилище
 ; в тесте невозможно. Заодно покрывает случай, когда domain или application
