@@ -35,8 +35,30 @@ jobs:
       - name: Установить зависимости
         run: uv sync --group dev
 
+      # Вывод инструментов дублируется в сводку задания намеренно: логи прогона
+      # закрыты для всех, кроме администратора репозитория, а сводка доступна
+      # через публичный API. Прогон, причину падения которого нельзя прочитать,
+      # страховочной сеткой не является.
       - name: Тесты
-        run: uv run pytest -q
+        shell: bash
+        run: |
+          set +e
+          uv run pytest -q > /tmp/pytest.log 2>&1
+          status=$?
+          cat /tmp/pytest.log
+          if [ $status -ne 0 ]; then
+            { echo '## pytest'; echo; echo '```'; tail -n 60 /tmp/pytest.log; echo '```'; } \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit $status
 
       - name: Контракты границ модулей
-        run: uv run lint-imports
+        shell: bash
+        run: |
+          set +e
+          uv run lint-imports > /tmp/lint.log 2>&1
+          status=$?
+          cat /tmp/lint.log
+          { echo '## lint-imports'; echo; echo '```'; cat /tmp/lint.log; echo '```'; } \
+            >> "$GITHUB_STEP_SUMMARY"
+          exit $status
