@@ -126,11 +126,17 @@ billing.esia_provider
 |---|---|---|---|---|
 | `Tenant` | `user` (OneToOne) | CASCADE | `settings.AUTH_USER_MODEL` (django.contrib.auth.User) | billing/models.py:38-39 |
 | `Tenant` | `apartment` (FK) | PROTECT | `Apartment` | billing/models.py:40 |
-| `Meter` | `apartment` (FK) | CASCADE | `Apartment` | billing/models.py:99 |
-| `MeterReading` | `apartment` (FK) | CASCADE | `Apartment` | billing/models.py:116 |
-| `MonthlyStatement` | `apartment` (FK) | CASCADE | `Apartment` | billing/models.py:135 |
+| `Meter` | `apartment` (FK) | PROTECT ¹ | `Apartment` | billing/models.py:99 |
+| `MeterReading` | `apartment` (FK) | PROTECT ¹ | `Apartment` | billing/models.py:116 |
+| `MonthlyStatement` | `apartment` (FK) | PROTECT ¹ | `Apartment` | billing/models.py:135 |
 | `Document` | `tenant` (FK) | CASCADE | `Tenant` | billing/models.py:154 |
 | `Payment` | `statement` (FK) | CASCADE | `MonthlyStatement` | billing/models.py:177-178 |
+
+¹ На момент снятия слепка здесь стоял `CASCADE` — это и есть дефект №9
+гап-анализа: удаление квартиры уносило приборы, показания и все счета. Три
+поля переведены на `PROTECT` миграцией
+[`0007_apartment_deletion_is_protected`](../../billing/migrations/0007_apartment_deletion_is_protected.py)
+до начала этапа B. Остальные строки таблицы — как были.
 
 Замечания по факту хранения данных (без оценки):
 - `MeterReading.meter` и `Meter.kind` — не FK, а `CharField` с общими `choices`

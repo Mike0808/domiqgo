@@ -4,11 +4,14 @@
 |-------|---------------------------------------------------------|---------------|
 | №29   | квартира с ГВС и нулевым нормативом начисляет ноль       | C3            |
 | №32   | состав приборов выводится из флагов, а не из реестра     | C2            |
-| №9    | удаление квартиры без жильца уносит показания и счета    | C3            |
+| №9    | ~~удаление квартиры уносит показания и счета~~ исправлен | — (C3)        |
 
-№9 не помечен ⚠ — он проявится не у пользователя, а в данных. Тест здесь
+№9 не помечен ⚠ — он проявился бы не у пользователя, а в данных. Тест здесь
 потому, что план миграции назвал его одним из трёх мест, не покрытых
-проверками вовсе.
+проверками вовсе. Исправлен до начала этапа B (миграция 0007): `on_delete`
+на приборах, показаниях и счетах переведён с `CASCADE` на `PROTECT`, тесты
+переписаны здесь же. C3 вернётся к нему ещё раз — заменить удаление объекта
+выводом из эксплуатации.
 """
 
 from datetime import date
@@ -121,15 +124,26 @@ def test_flag_without_registered_meter_stops_the_calculation():
 
 
 # --------------------------------------------------------------------------
-# №9 — каскад на квартире. Переписывает шаг C3.
+# №9 — каскад на квартире. Дефект исправлен: миграция 0007. Переписан.
 # --------------------------------------------------------------------------
+#
+# Тест до исправления назывался
+# `test_deleting_an_apartment_without_a_tenant_erases_its_whole_history` и
+# утверждал обратное: `apartment.delete()` проходит молча, а `Meter`,
+# `MeterReading` и `MonthlyStatement` после него не существуют. Переименован
+# и переписан в том же коммите, что и `on_delete` — так требует контракт
+# каталога.
 
-def test_deleting_an_apartment_without_a_tenant_erases_its_whole_history():
-    """Квартира без жильца удаляется бесшумно, унося показания и счета.
+def test_deleting_an_apartment_with_history_is_refused():
+    """Квартира, за которой стоят приборы, показания или счета, не удаляется.
 
-    `PROTECT` стоит только на жильце; на приборах, показаниях и счетах —
-    `CASCADE`. После C3 удаление объекта запрещено вовсе, его место занимает
-    вывод из эксплуатации.
+    Прежде на всех трёх стоял `CASCADE`, и удаление квартиры уносило историю
+    начислений целиком — без предупреждения и без следа. Теперь `PROTECT`, и
+    удаление падает на первой же связи.
+
+    Это не полный запрет удаления: пустая, ни разу не начислявшаяся квартира
+    удаляется по-прежнему (см. тест ниже). Замена удаления на вывод из
+    эксплуатации — шаг C3 плана миграции, и он перепишет уже этот тест.
     """
     apartment = Apartment.objects.create(label="кв")
     Meter.objects.create(apartment=apartment, kind="cold_water", initial_value=Decimal("100"))
@@ -138,17 +152,63 @@ def test_deleting_an_apartment_without_a_tenant_erases_its_whole_history():
     MonthlyStatement.objects.create(apartment=apartment, period=PERIOD,
                                     total=Decimal("1000.00"))
 
-    apartment.delete()   # ни предупреждения, ни ошибки
+    with pytest.raises(ProtectedError):
+        apartment.delete()
 
-    assert not Meter.objects.exists()
-    assert not MeterReading.objects.exists()
-    assert not MonthlyStatement.objects.exists()
+    assert Meter.objects.count() == 1
+    assert MeterReading.objects.count() == 1
+    assert MonthlyStatement.objects.count() == 1
+
+
+@pytest.mark.parametrize(
+    "attach",
+    [
+        pytest.param(
+            lambda a: Meter.objects.create(apartment=a, kind="cold_water",
+                                           initial_value=Decimal("100")),
+            id="meter",
+        ),
+        pytest.param(
+            lambda a: MeterReading.objects.create(apartment=a, period=PERIOD,
+                                                  meter="cold_water",
+                                                  value=Decimal("110")),
+            id="reading",
+        ),
+        pytest.param(
+            lambda a: MonthlyStatement.objects.create(apartment=a, period=PERIOD,
+                                                      total=Decimal("1000.00")),
+            id="statement",
+        ),
+    ],
+)
+def test_each_kind_of_history_protects_the_apartment_on_its_own(attach):
+    """Каждая из трёх связей держит квартиру сама, а не только все вместе."""
+    apartment = Apartment.objects.create(label="кв")
+    attach(apartment)
+
+    with pytest.raises(ProtectedError):
+        apartment.delete()
+
+
+def test_an_apartment_that_was_never_used_still_deletes():
+    """Опечатка в списке объектов остаётся исправимой.
+
+    `PROTECT` защищает историю, а не саму запись: квартира без приборов,
+    показаний, счетов и жильцов удаляется без возражений.
+    """
+    apartment = Apartment.objects.create(label="опечатка")
+
+    apartment.delete()
+
+    assert not Apartment.objects.exists()
 
 
 def test_deleting_an_apartment_with_a_tenant_is_refused():
-    """Единственная защита сегодня — живой жилец.
+    """Защита жильцом была и остаётся; теперь она не единственная.
 
-    Она же и обманчива: жильца удалить можно, после чего защиты не остаётся.
+    Раньше её можно было снять, удалив жильца, — после чего история уходила
+    вместе с квартирой. Теперь удаление жильца оставляет квартиру защищённой
+    её собственными начислениями.
     """
     apartment = Apartment.objects.create(label="кв")
     user = User.objects.create_user("ivanov", password="pass12345")

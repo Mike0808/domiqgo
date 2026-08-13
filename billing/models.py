@@ -96,7 +96,7 @@ METER_KIND_CHOICES = [
 class Meter(models.Model):
     """Физический прибор учёта: номер и показание, зафиксированные в акте
     при подписании договора. Начальное показание — база первого месяца."""
-    apartment = models.ForeignKey(Apartment, on_delete=models.CASCADE, related_name="meters")
+    apartment = models.ForeignKey(Apartment, on_delete=models.PROTECT, related_name="meters")
     kind = models.CharField("Вид", max_length=32, choices=METER_KIND_CHOICES)
     serial_number = models.CharField("Заводской номер", max_length=64, blank=True)
     initial_value = models.DecimalField("Начальное показание", max_digits=12, decimal_places=3)
@@ -113,7 +113,7 @@ class Meter(models.Model):
         return f"{self.get_kind_display()}{n}"
 
 class MeterReading(models.Model):
-    apartment = models.ForeignKey(Apartment, on_delete=models.CASCADE, related_name="readings")
+    apartment = models.ForeignKey(Apartment, on_delete=models.PROTECT, related_name="readings")
     period = models.DateField("Период")
     meter = models.CharField("Счётчик", max_length=32, choices=METER_KIND_CHOICES)
     value = models.DecimalField("Показание", max_digits=12, decimal_places=3)
@@ -132,7 +132,7 @@ class MonthlyStatement(models.Model):
     UNPAID = "unpaid"; PENDING = "pending"; PAID = "paid"
     STATUS_CHOICES = [(UNPAID, "Не оплачено"), (PENDING, "На проверке"), (PAID, "Оплачено")]
 
-    apartment = models.ForeignKey(Apartment, on_delete=models.CASCADE, related_name="statements")
+    apartment = models.ForeignKey(Apartment, on_delete=models.PROTECT, related_name="statements")
     period = models.DateField("Период")
     lines = models.JSONField("Строки начисления", default=list)
     total = models.DecimalField("Итого", max_digits=12, decimal_places=2, default=Decimal("0"))
