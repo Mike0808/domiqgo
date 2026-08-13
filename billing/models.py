@@ -1,5 +1,6 @@
 from decimal import Decimal
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 class Apartment(models.Model):
@@ -18,7 +19,8 @@ class Apartment(models.Model):
         "Норматив подогрева ГВС, Гкал/м³", max_digits=7, decimal_places=5,
         default=Decimal("0"),
         help_text="Тепло на подогрев 1 м³ горячей воды — см. квитанцию УК "
-                  "(обычно 0,05–0,065 Гкал/м³).")
+                  "(обычно 0,05–0,065 Гкал/м³). Обязателен, если подведена "
+                  "горячая вода: без него подогрев не начислится.")
     round_total = models.BooleanField(
         "Округлять итог", default=True,
         help_text="Итог свыше 10 000 ₽ округляется вниз до кратного 50 ₽ "
@@ -30,6 +32,28 @@ class Apartment(models.Model):
     class Meta:
         verbose_name = "Квартира"
         verbose_name_plural = "Квартиры"
+
+    def clean(self):
+        """Норматив подогрева обязателен при подведённой горячей воде.
+
+        Дефект №29 гап-анализа: `has_hot_water` по умолчанию `True`, а
+        `gvs_heat_norm` — `0`, поэтому только что заведённая квартира начисляла
+        за подогрев `0 × ставка = 0` — строка в счёте есть, сумма нулевая,
+        ошибки нет. Инвариант принадлежит Properties
+        ([ADR-0007]), сюда он попал раньше своего шага C3 по [ADR-0026].
+
+        Проверка держит форму в админке; расчёт прикрыт отдельно
+        (`MissingHeatNormError`), потому что `Model.clean` не вызывается при
+        `objects.create` и не защитил бы уже заведённые квартиры.
+        """
+        # `Decimal("0")` ложно, `None` (поле оставили пустым) — тоже.
+        if self.has_hot_water and (self.gvs_heat_norm or 0) <= 0:
+            raise ValidationError({"gvs_heat_norm": (
+                "При подведённой горячей воде норматив подогрева обязателен и "
+                "больше нуля. Возьмите его из квитанции управляющей компании "
+                "(обычно 0,05–0,065 Гкал/м³). Пока он не задан, подогрев в "
+                "счёт не попадает, и вы недополучаете эти деньги."
+            )})
 
     def __str__(self):
         return self.label

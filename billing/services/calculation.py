@@ -20,6 +20,16 @@ class MeterType(str, Enum):
 class MissingTariffError(Exception):
     """Raised when no tariff is available for a required utility."""
 
+class MissingHeatNormError(Exception):
+    """Raised when hot water is plumbed but the heating norm is not set.
+
+    Гкал = объём × норматив, поэтому нулевой норматив даёт нулевую сумму за
+    подогрев — счёт со строкой «подогрев: 0,00 ₽» выглядит законно и молча
+    недоначисляет (дефект №29 гап-анализа). Величина не выводится ни из чего:
+    она подомовая и берётся из квитанции УК. Единственный правильный ответ —
+    отказаться считать.
+    """
+
 @dataclass(frozen=True)
 class ApartmentConfig:
     electricity_meter_type: MeterType
@@ -30,7 +40,9 @@ class ApartmentConfig:
     internet: Decimal
     other_fixed: Decimal
     # Гкал на подогрев 1 м³ ГВС (норматив дома); Гкал = объём × норматив.
-    gvs_heat_norm: Decimal = Decimal("0")
+    # Без значения по умолчанию намеренно: при `has_hot_water` ноль — ошибка,
+    # а умолчание, которое всегда ошибка, только прячет её (дефект №29).
+    gvs_heat_norm: Decimal
     # Округлять итог вниз до 50 ₽ (только свыше ROUND_THRESHOLD).
     round_total: bool = True
 
@@ -86,6 +98,10 @@ def compute_statement(config, current, previous, tariffs):
         # Двухкомпонентный ГВС: объём по счётчику (м³) оплачивается по
         # компоненту ХВ, а тепло на подогрев (объём × норматив, Гкал) — по
         # компоненту ТЭ. Водоотведение ниже считает только объём (hot).
+        if config.gvs_heat_norm <= 0:
+            raise MissingHeatNormError(
+                "Не задан норматив подогрева ГВС (Гкал/м³): "
+                f"{config.gvs_heat_norm}")
         hot = _consumption("hot_water", current, previous)
         cold_rate = _tariff("hot_water_cold_component", tariffs)
         lines.append(LineItem("hot_water_cold_component",

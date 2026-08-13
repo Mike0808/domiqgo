@@ -1,7 +1,8 @@
 from decimal import Decimal
 import pytest
 from billing.services.calculation import (
-    ApartmentConfig, MeterType, MissingTariffError, compute_statement,
+    ApartmentConfig, MeterType, MissingHeatNormError, MissingTariffError,
+    compute_statement,
 )
 
 def cfg(meter=MeterType.SINGLE, cold=True, hot=True, sewage=True,
@@ -68,17 +69,33 @@ def test_missing_heat_component_tariff_raises():
             tariffs=tariffs,
         )
 
-def test_zero_norm_gives_zero_heat_amount():
-    lines, _ = compute_statement(
-        cfg(cold=False, sewage=False, norm="0"),
-        current={"hot_water": Decimal("55"), "electricity_single": Decimal("0")},
-        previous={"hot_water": Decimal("50"), "electricity_single": Decimal("0")},
+@pytest.mark.parametrize("norm", ["0", "-0.05"])
+def test_norm_not_above_zero_refuses_to_calculate(norm):
+    """Раньше это давало нулевой подогрев — дефект №29 гап-анализа.
+
+    Нулевой норматив выглядел как законный счёт со строкой «подогрев: 0,00 ₽»
+    и молча недоначислял. Величина подомовая и ни из чего не выводится, поэтому
+    единственный правильный ответ — отказаться считать.
+    """
+    with pytest.raises(MissingHeatNormError):
+        compute_statement(
+            cfg(cold=False, sewage=False, norm=norm),
+            current={"hot_water": Decimal("55"), "electricity_single": Decimal("0")},
+            previous={"hot_water": Decimal("50"), "electricity_single": Decimal("0")},
+            tariffs=TARIFFS,
+        )
+
+
+def test_zero_norm_is_irrelevant_without_hot_water():
+    """Отказ касается только квартир с подведённой ГВС."""
+    lines, total = compute_statement(
+        cfg(hot=False, sewage=False, norm="0"),
+        current={"cold_water": Decimal("110"), "electricity_single": Decimal("0")},
+        previous={"cold_water": Decimal("100"), "electricity_single": Decimal("0")},
         tariffs=TARIFFS,
     )
-    by = {l.code: l for l in lines}
-    assert by["hot_water_cold_component"].amount == Decimal("129.30")
-    assert by["hot_water_heat_component"].quantity == Decimal("0.00000")
-    assert by["hot_water_heat_component"].amount == Decimal("0.00")
+    assert {l.code for l in lines} == {"cold_water", "electricity_single"}
+    assert total == Decimal("481.50")
 
 def test_dual_meter_splits_day_night():
     lines, total = compute_statement(

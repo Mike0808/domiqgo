@@ -179,6 +179,29 @@ def test_first_month_uses_contract_initial_values(db):
     stmt = MonthlyStatement.objects.get(apartment=a)
     assert stmt.total == Decimal("968.50")   # below 10 000 — not rounded
 
+def test_missing_heat_norm_shows_message_not_a_bill_without_heating(db):
+    """Дефект №29: раньше здесь выставлялся счёт с нулевым подогревом."""
+    from billing.models import Meter
+    a = Apartment.objects.create(label="кв", has_cold_water=False,
+                                 has_hot_water=True, has_sewage=False)
+    assert a.gvs_heat_norm == Decimal("0")   # владелец не открыл квитанцию УК
+    Tariff.objects.create(utility_type="hot_water_cold_component",
+                          rate=Decimal("25.86"), effective_from=date(2020, 1, 1))
+    Tariff.objects.create(utility_type="hot_water_heat_component",
+                          rate=Decimal("2389.72"), effective_from=date(2020, 1, 1))
+    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"),
+                          effective_from=date(2020, 1, 1))
+    Meter.objects.create(apartment=a, kind="hot_water", initial_value=Decimal("50"))
+    Meter.objects.create(apartment=a, kind="electricity_single", initial_value=Decimal("1400"))
+    u = User.objects.create_user("gvs", password="pass12345")
+    Tenant.objects.create(user=u, apartment=a, full_name="Без норматива")
+    c = Client()
+    assert c.login(username="gvs", password="pass12345")
+    resp = c.post("/", {"hot_water": "55", "electricity_single": "1500"})
+    assert resp.status_code == 200            # понятное сообщение, не 500
+    assert "Норматив подогрева" in resp.content.decode()
+    assert not MonthlyStatement.objects.filter(apartment=a).exists()
+
 def test_missing_baseline_shows_message_not_bill_from_zero(db):
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
     Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))

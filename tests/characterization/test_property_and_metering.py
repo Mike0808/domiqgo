@@ -2,7 +2,7 @@
 
 | Пункт | Что зафиксировано                                       | Кто перепишет |
 |-------|---------------------------------------------------------|---------------|
-| №29   | квартира с ГВС и нулевым нормативом начисляет ноль       | C3            |
+| №29   | ~~квартира с ГВС и нулевым нормативом начисляет ноль~~ исправлен | — (C3) |
 | №32   | состав приборов выводится из флагов, а не из реестра     | C2            |
 | №9    | ~~удаление квартиры уносит показания и счета~~ исправлен | — (C3)        |
 
@@ -12,6 +12,10 @@
 на приборах, показаниях и счетах переведён с `CASCADE` на `PROTECT`, тесты
 переписаны здесь же. C3 вернётся к нему ещё раз — заменить удаление объекта
 выводом из эксплуатации.
+
+№29 исправлен там же и тогда же ([ADR-0026](../../docs/architecture/adr/0026-defect-fixes-allowed-in-legacy-app.md)):
+норматив подогрева обязателен при подведённой ГВС, расчёт отказывается вместо
+нулевой строки. C3 перенесёт инвариант в Properties, но правило уже действует.
 """
 
 from datetime import date
@@ -19,11 +23,13 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.db.models import ProtectedError
 
 from billing.models import (
     Apartment, Meter, MeterReading, MonthlyStatement, Tariff, Tenant,
 )
+from billing.services.calculation import MissingHeatNormError
 from billing.services.statements import (
     MissingBaselineError, generate_statement, meters_for,
 )
@@ -39,23 +45,20 @@ def _tariff(code, rate):
 
 
 # --------------------------------------------------------------------------
-# №29 — молчаливый ноль за подогрев. Переписывает шаг C3.
+# №29 — молчаливый ноль за подогрев. Дефект исправлен. Переписан.
 # --------------------------------------------------------------------------
+#
+# Тест до исправления назывался
+# `test_new_apartment_with_hot_water_charges_zero_for_heating` и утверждал,
+# что счёт выставляется, строка «подогрев» в нём есть, количество `"0.00000"`,
+# сумма `"0.00"`, итог 616.30 ₽ — и никакой ошибки. Переписан тем же коммитом,
+# что и проверка, так требует контракт каталога.
 
-def test_new_apartment_with_hot_water_charges_zero_for_heating():
-    """Строка «подогрев» в счёте есть, количество ноль, сумма ноль, ошибки нет.
 
-    `has_hot_water` по умолчанию `True`, `gvs_heat_norm` — `0`; владелец,
-    заведший квартиру и не открывший квитанцию УК, недоначисляет и не узнаёт
-    об этом. После C3 (ADR-0007) норматив при подведённой ГВС обязателен и
-    больше нуля — этот тест переписывается на ожидание ошибки валидации, **и
-    суммы новых счетов вырастут**.
-    """
-    apartment = Apartment.objects.create(label="кв", has_cold_water=False,
-                                         has_hot_water=True, has_sewage=False)
-    assert apartment.gvs_heat_norm == Decimal("0")
-    apartment.full_clean()   # сегодня такая квартира считается корректной
-
+def _hot_water_apartment(norm):
+    apartment = Apartment.objects.create(
+        label="кв", has_cold_water=False, has_hot_water=True, has_sewage=False,
+        gvs_heat_norm=Decimal(norm))
     Meter.objects.create(apartment=apartment, kind="hot_water", initial_value=Decimal("50"))
     Meter.objects.create(apartment=apartment, kind="electricity_single",
                          initial_value=Decimal("1400"))
@@ -66,14 +69,59 @@ def test_new_apartment_with_hot_water_charges_zero_for_heating():
                                 meter="hot_water", value=Decimal("55"))
     MeterReading.objects.create(apartment=apartment, period=PERIOD,
                                 meter="electricity_single", value=Decimal("1500"))
+    return apartment
+
+
+def test_apartment_with_hot_water_and_no_norm_is_rejected_by_validation():
+    """Квартиру с подведённой ГВС и незаполненным нормативом нельзя сохранить.
+
+    Раньше `has_hot_water` по умолчанию `True` при `gvs_heat_norm` по умолчанию
+    `0` считалось корректной конфигурацией, и владелец, не открывший квитанцию
+    УК, недоначислял молча. Инвариант из ADR-0007.
+    """
+    apartment = Apartment(label="кв", has_hot_water=True)
+    assert apartment.gvs_heat_norm == Decimal("0")
+
+    with pytest.raises(ValidationError) as exc:
+        apartment.full_clean()
+    assert "gvs_heat_norm" in exc.value.error_dict
+
+    apartment.has_hot_water = False
+    apartment.full_clean()   # без ГВС норматив не нужен
+
+
+def test_statement_refuses_to_hide_the_missing_norm_behind_a_zero():
+    """Расчёт отказывается, а не выставляет счёт с нулевым подогревом.
+
+    `Model.clean` не вызывается при `objects.create` и не защищает квартиры,
+    заведённые до исправления, — поэтому у расчёта своя проверка. Прежний счёт
+    на 616.30 ₽ (129.30 за объём + 0.00 за подогрев + 487.00 за свет) больше
+    не выставляется вовсе.
+    """
+    apartment = _hot_water_apartment("0")
+
+    with pytest.raises(MissingHeatNormError):
+        generate_statement(apartment, PERIOD)
+
+    assert not MonthlyStatement.objects.exists()
+
+
+def test_the_same_apartment_with_a_norm_bills_the_heating():
+    """**Суммы вырастут**: те же показания с заполненным нормативом.
+
+    Разница между 616.30 и 916.81 ₽ — 300.51 ₽ за один месяц по одной
+    квартире — и есть то, что дефект отдавал бесплатно.
+    """
+    apartment = _hot_water_apartment("0.02515")
 
     invoice = generate_statement(apartment, PERIOD)
 
     lines = {line["code"]: line for line in invoice.lines}
-    assert lines["hot_water_heat_component"]["quantity"] == "0.00000"
-    assert lines["hot_water_heat_component"]["amount"] == "0.00"
-    # 5 м³ × 25.86 = 129.30 за объём, 0.00 за подогрев, 100 кВт·ч × 4.87 = 487.00
-    assert invoice.total == Decimal("616.30")
+    # 5 м³ × 0.02515 = 0.12575 Гкал × 2389.72 ₽/Гкал = 300.51 ₽
+    assert lines["hot_water_heat_component"]["quantity"] == "0.12575"
+    assert lines["hot_water_heat_component"]["amount"] == "300.51"
+    # 129.30 за объём + 300.51 за подогрев + 487.00 за свет
+    assert invoice.total == Decimal("916.81")
 
 
 # --------------------------------------------------------------------------

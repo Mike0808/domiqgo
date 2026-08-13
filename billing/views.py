@@ -10,7 +10,7 @@ from allauth.socialaccount.models import SocialAccount
 from .consent import PRIVACY_POLICY_VERSION
 from .forms import MeterReadingForm, ConsentForm
 from .models import Document, MeterReading, MonthlyStatement, Tenant
-from .services.calculation import MissingTariffError
+from .services.calculation import MissingHeatNormError, MissingTariffError
 from .services.statements import MissingBaselineError, meters_for, generate_statement
 
 def _current_period():
@@ -68,6 +68,14 @@ def current_month(request):
                                "locked": False})
             except MissingTariffError:
                 messages.error(request, "Тариф не настроен. Обратитесь к арендодателю.")
+                return render(request, "billing/current_month.html",
+                              {"form": form, "statement": None, "period": period,
+                               "locked": False})
+            except MissingHeatNormError:
+                messages.error(
+                    request,
+                    "Норматив подогрева горячей воды не задан. "
+                    "Обратитесь к арендодателю.")
                 return render(request, "billing/current_month.html",
                               {"form": form, "statement": None, "period": period,
                                "locked": False})
