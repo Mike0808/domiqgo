@@ -31,6 +31,7 @@
 root_packages =
     modules
     billing
+    bus
 include_external_packages = True
 
 ; --------------------------------------------------------------------------
@@ -123,4 +124,17 @@ type = forbidden
 source_modules =
     modules
 forbidden_modules =
+    billing
+
+; --------------------------------------------------------------------------
+; ADR-0027: шина — транспорт, а не участник предметной области. Зависимость
+; направлена в одну сторону: модули знают о bus, bus не знает ни о ком. Иначе
+; получается цикл, который на графе виден, а в коде — нет.
+[importlinter:contract:bus-knows-no-domain]
+name = Шина не знает ни одного события по имени
+type = forbidden
+source_modules =
+    bus
+forbidden_modules =
+    modules
     billing

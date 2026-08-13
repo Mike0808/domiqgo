@@ -123,6 +123,99 @@ def test_no_django_signals_between_modules(path):
     )
 
 
+#: Слой, из которого разрешено публиковать события (правило 4.4).
+PUBLISHING_LAYER = "application"
+
+
+def _layer_of(path: Path) -> str:
+    parts = path.relative_to(MODULES_ROOT).parts
+    return parts[1] if len(parts) > 1 else ""
+
+
+@pytest.mark.parametrize(
+    "path",
+    [p for p in MODULES_ROOT.rglob("*.py") if _layer_of(p) != PUBLISHING_LAYER],
+    ids=lambda p: str(p.name),
+)
+def test_bus_is_imported_only_from_application(path):
+    """Правило 4.4: домен не знает, что у него есть подписчики.
+
+    Проверка стала возможной на шаге B1: до него у шины не было имени, и
+    место публикации отличить было нечем ([ADR-0027](../../docs/architecture/adr/0027-event-bus-lives-outside-modules.md)).
+    Смотрим на импорт, а не только на вызов: модуль, притащивший `bus` в
+    `domain/`, уже нарушил правило, даже если публикует пока где-то ещё.
+    """
+    offenders = [
+        name
+        for name in (
+            *(alias.name
+              for node in ast.walk(_parse(path)) if isinstance(node, ast.Import)
+              for alias in node.names),
+            *(node.module
+              for node in ast.walk(_parse(path)) if isinstance(node, ast.ImportFrom)
+              and node.module),
+        )
+        if name == "bus" or name.startswith("bus.")
+    ]
+    assert not offenders, (
+        f"{path.relative_to(REPO_ROOT)}: шина импортируется только из "
+        f"{PUBLISHING_LAYER}/, а здесь: {', '.join(offenders)}. Домен не знает, "
+        "что у него есть подписчики; инфраструктура не знает, что произошло по "
+        "существу."
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [p for p in MODULES_ROOT.rglob("*.py") if _layer_of(p) != PUBLISHING_LAYER],
+    ids=lambda p: str(p.name),
+)
+def test_publish_is_called_only_from_application(path):
+    """То же правило со стороны вызова — на случай реэкспорта имени.
+
+    Импорт можно спрятать (`from ..application.bus_facade import publish`), а
+    вызов — нет: имя `publish` в чужом слое подозрительно само по себе.
+    """
+    offenders = []
+    for node in ast.walk(_parse(path)):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+        if name == "publish":
+            offenders.append(f"строка {node.lineno}")
+    assert not offenders, (
+        f"{path.relative_to(REPO_ROOT)}: publish() вызывается только из "
+        f"{PUBLISHING_LAYER}/, а здесь — {', '.join(offenders)}."
+    )
+
+
+def test_bus_does_not_know_any_domain():
+    """`bus/` — транспорт: ни одного события по имени он не знает.
+
+    Дублирует контракт `bus-knows-no-domain` из `.importlinter` намеренно:
+    инструмент недоступен локально (до PyPI из сети разработки нет доступа), а
+    зависимость, направленная в обратную сторону, — это цикл, который дороже
+    всего исправлять поздно.
+    """
+    offenders = []
+    for path in (REPO_ROOT / "bus").rglob("*.py"):
+        for name in (
+            *(alias.name
+              for node in ast.walk(_parse(path)) if isinstance(node, ast.Import)
+              for alias in node.names),
+            *(node.module
+              for node in ast.walk(_parse(path)) if isinstance(node, ast.ImportFrom)
+              and node.module),
+        ):
+            if name.split(".")[0] in ("modules", "billing"):
+                offenders.append(f"{path.name}: {name}")
+    assert not offenders, (
+        "bus/ не импортирует предметные пакеты, а найдено: "
+        + "; ".join(offenders)
+    )
+
+
 # --------------------------------------------------------------------------
 # §5. Владение данными
 # --------------------------------------------------------------------------
