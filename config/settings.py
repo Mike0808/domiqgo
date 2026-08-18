@@ -49,6 +49,9 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.vk",
     "billing",
     "billing.esia_provider",
+    # Шина событий (ADR-0027). Приложение — только ради журнала публикаций
+    # (шаг B2); транспорту база не нужна.
+    "bus",
 ]
 
 SITE_ID = 1

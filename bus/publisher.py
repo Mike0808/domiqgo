@@ -5,6 +5,7 @@ from typing import Any
 
 from django.db import transaction
 
+from .journal import record
 from .registry import subscribers_for
 
 logger = logging.getLogger("bus")
@@ -18,9 +19,15 @@ def publish(event: Any) -> None:
     обратный вызов немедленно — и это верно, потому что публиковать без
     транзакции означает, что фиксировать нечего.
 
+    Факт публикации попадает в журнал (`bus_published_event`) **до** того, как
+    доставка запланирована, и в той же транзакции: откат уносит запись вместе
+    с фактом, которого не было. Журнал нужен не доставке, а пересборке проекции
+    признанных оплат — [ADR-0015](../docs/architecture/adr/0015-settlement-projection-in-billing.md).
+
     Функция ничего не возвращает и не сообщает, дошло ли событие: издателя это
     не касается. Судьба подписчика — в логе `bus`.
     """
+    record(event)
     transaction.on_commit(lambda: _deliver(event))
 
 
