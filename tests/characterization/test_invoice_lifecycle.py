@@ -19,9 +19,10 @@ from django.test import Client
 from django.utils import timezone
 
 from billing.models import (
-    Apartment, Meter, MeterReading, MonthlyStatement, Tariff, Tenant,
+    Apartment, Meter, MeterReading, MonthlyStatement, Tenant,
 )
 from billing.services.statements import generate_statement
+from modules.tariffs.api import publish_tariff_version
 
 pytestmark = [pytest.mark.django_db, pytest.mark.characterization]
 
@@ -30,7 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 def _tariffs():
     for code, rate in (("cold_water", "48.15"), ("electricity_single", "4.87")):
-        Tariff.objects.create(utility_type=code, rate=Decimal(rate),
+        publish_tariff_version(utility=code, rate=Decimal(rate),
                               effective_from=date(2020, 1, 1))
 
 

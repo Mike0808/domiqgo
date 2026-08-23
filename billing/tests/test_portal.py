@@ -4,7 +4,8 @@ import pytest
 from django.contrib.auth.models import User
 from django.test import Client
 from django.utils import timezone
-from billing.models import Apartment, Tenant, Tariff, MeterReading, MonthlyStatement
+from billing.models import Apartment, Tenant, MeterReading, MonthlyStatement
+from modules.tariffs.api import publish_tariff_version
 
 pytestmark = pytest.mark.django_db
 
@@ -15,8 +16,8 @@ def _period_first_of_this_month():
 @pytest.fixture
 def tenant_setup():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
-    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
-    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
+    publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
+    publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
     # baseline (previous month) readings set by landlord
     prev = _period_first_of_this_month().replace(day=1)
     baseline_period = date(prev.year - 1, 12, 1) if prev.month == 1 else date(prev.year, prev.month - 1, 1)
@@ -140,13 +141,13 @@ def test_user_without_tenant_profile_gets_friendly_page(db):
 
 def test_missing_sewage_tariff_shows_message_not_500(db):
     from django.contrib.auth.models import User
-    from billing.models import Apartment, Tenant, Tariff, MeterReading, MonthlyStatement
+    from billing.models import Apartment, Tenant, MeterReading, MonthlyStatement
     period = _period_first_of_this_month()
     baseline = date(period.year - 1, 12, 1) if period.month == 1 else date(period.year, period.month - 1, 1)
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=True)
     # cold + electricity tariffs exist, but NO sewage tariff
-    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
-    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
+    publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
+    publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
     MeterReading.objects.create(apartment=a, period=baseline, meter="cold_water", value=Decimal("100"))
     MeterReading.objects.create(apartment=a, period=baseline, meter="electricity_single", value=Decimal("1400"))
     u = User.objects.create_user("petrov", password="pass12345")
@@ -160,8 +161,8 @@ def test_missing_sewage_tariff_shows_message_not_500(db):
 def test_first_month_uses_contract_initial_values(db):
     from billing.models import Meter
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
-    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
-    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
+    publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
+    publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
     Meter.objects.create(apartment=a, kind="cold_water", serial_number="CW-77",
                          initial_value=Decimal("100"))
     Meter.objects.create(apartment=a, kind="electricity_single", serial_number="E-77",
@@ -185,11 +186,11 @@ def test_missing_heat_norm_shows_message_not_a_bill_without_heating(db):
     a = Apartment.objects.create(label="кв", has_cold_water=False,
                                  has_hot_water=True, has_sewage=False)
     assert a.gvs_heat_norm == Decimal("0")   # владелец не открыл квитанцию УК
-    Tariff.objects.create(utility_type="hot_water_cold_component",
+    publish_tariff_version(utility="hot_water_cold_component",
                           rate=Decimal("25.86"), effective_from=date(2020, 1, 1))
-    Tariff.objects.create(utility_type="hot_water_heat_component",
+    publish_tariff_version(utility="hot_water_heat_component",
                           rate=Decimal("2389.72"), effective_from=date(2020, 1, 1))
-    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"),
+    publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"),
                           effective_from=date(2020, 1, 1))
     Meter.objects.create(apartment=a, kind="hot_water", initial_value=Decimal("50"))
     Meter.objects.create(apartment=a, kind="electricity_single", initial_value=Decimal("1400"))
@@ -204,8 +205,8 @@ def test_missing_heat_norm_shows_message_not_a_bill_without_heating(db):
 
 def test_missing_baseline_shows_message_not_bill_from_zero(db):
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
-    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
-    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
+    publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
+    publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
     # no Meter rows, no prior readings
     u = User.objects.create_user("orphan", password="pass12345")
     Tenant.objects.create(user=u, apartment=a, full_name="Без базы")

@@ -27,6 +27,18 @@ PRIMITIVE_ANNOTATIONS = {
 #: Окончания, выдающие повелительное наклонение вместо прошедшего (4.1).
 IMPERATIVE_SUFFIXES = ("Command", "Request", "Do", "Create", "Update", "Delete")
 
+#: Причастия прошедшего времени не на `-ed`. Список закрытый и пополняется
+#: только вместе с обоснованием: правило 4.1 требует прошедшего времени, а
+#: `-ed` было лишь удобным приближением к нему — пока не встретилось первое
+#: неправильное причастие.
+#:
+#: `Withdrawn` — отозванная версия тарифа (шаг C1). `Overdue` — просрочка
+#: платежа: это вообще не причастие, а прилагательное, и событие названо так в
+#: каталоге карты §5. Оно единственное временно́е: его никто не «совершает»,
+#: оно наступает от того, что прошло время, — и «правильного» глагольного
+#: имени у него нет.
+IRREGULAR_PAST_FORMS = ("Withdrawn", "Overdue", "Sent", "Written", "Undone")
+
 
 def _files(pattern: str):
     return sorted(MODULES_ROOT.glob(pattern))
@@ -61,11 +73,15 @@ def test_event_names_are_past_tense(path):
     offenders = [
         cls.name
         for cls in _classes(_parse(path))
-        if cls.name.endswith(IMPERATIVE_SUFFIXES) or not cls.name.endswith("ed")
+        if cls.name.endswith(IMPERATIVE_SUFFIXES)
+        or not cls.name.endswith(("ed", *IRREGULAR_PAST_FORMS))
     ]
     assert not offenders, (
         f"{path.relative_to(REPO_ROOT)}: события именуются в прошедшем времени "
-        f"(InvoiceIssued, PaymentConfirmed), а найдено: {', '.join(offenders)}"
+        f"(InvoiceIssued, PaymentConfirmed), а найдено: {', '.join(offenders)}. "
+        "Если имя всё же в прошедшем времени, но не на «-ed» — впишите форму в "
+        "IRREGULAR_PAST_FORMS с обоснованием, а не переименовывайте понятие "
+        "под проверку."
     )
 
 

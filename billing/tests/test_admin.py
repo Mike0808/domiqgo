@@ -3,7 +3,8 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth.models import User
 from django.test import Client
-from billing.models import Apartment, Tariff, MeterReading, MonthlyStatement
+from billing.models import Apartment, MeterReading, MonthlyStatement
+from modules.tariffs.api import publish_tariff_version
 
 pytestmark = pytest.mark.django_db
 
@@ -22,8 +23,8 @@ def test_admin_apartment_changelist_loads(admin_client):
 def test_regenerate_action_recomputes_total(admin_client):
     from billing.models import Meter
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
-    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
-    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     Meter.objects.create(apartment=a, kind="cold_water", initial_value=Decimal("0"))
     Meter.objects.create(apartment=a, kind="electricity_single", initial_value=Decimal("0"))
     MeterReading.objects.create(apartment=a, period=date(2026, 7, 1), meter="cold_water", value=Decimal("110"))
@@ -41,8 +42,8 @@ def test_regenerate_action_recomputes_total(admin_client):
 def test_regenerate_action_reports_failure_without_500(admin_client):
     from billing.models import Meter
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=True)
-    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
-    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     Meter.objects.create(apartment=a, kind="cold_water", initial_value=Decimal("0"))
     Meter.objects.create(apartment=a, kind="electricity_single", initial_value=Decimal("0"))
     MeterReading.objects.create(apartment=a, period=date(2026, 7, 1), meter="cold_water", value=Decimal("110"))
@@ -57,8 +58,8 @@ def test_regenerate_action_reports_failure_without_500(admin_client):
 def test_admin_saving_reading_recalculates_statement(admin_client):
     from billing.models import Meter
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
-    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
-    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     Meter.objects.create(apartment=a, kind="cold_water", initial_value=Decimal("100"))
     Meter.objects.create(apartment=a, kind="electricity_single", initial_value=Decimal("1400"))
     MeterReading.objects.create(apartment=a, period=date(2026, 7, 1), meter="electricity_single", value=Decimal("1500"))

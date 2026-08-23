@@ -81,32 +81,9 @@ class Tenant(models.Model):
     def __str__(self):
         return self.full_name or self.user.get_username()
 
-class Tariff(models.Model):
-    COLD = "cold_water"; SEWAGE = "sewage"
-    # ГВС в Уфе двухкомпонентный: объём (₽/м³) + подогрев (₽/Гкал).
-    HOT_COLD = "hot_water_cold_component"; HOT_HEAT = "hot_water_heat_component"
-    ESINGLE = "electricity_single"; EDAY = "electricity_day"; ENIGHT = "electricity_night"
-    UTILITY_CHOICES = [
-        (COLD, "Холодная вода"),
-        (HOT_COLD, "ГВС — компонент на холодную воду"),
-        (HOT_HEAT, "ГВС — компонент на тепловую энергию"),
-        (SEWAGE, "Водоотведение"),
-        (ESINGLE, "Электроэнергия"), (EDAY, "Электроэнергия (день)"),
-        (ENIGHT, "Электроэнергия (ночь)"),
-    ]
-    utility_type = models.CharField("Услуга", max_length=32, choices=UTILITY_CHOICES)
-    rate = models.DecimalField("Тариф, ₽/ед.", max_digits=10, decimal_places=4)
-    effective_from = models.DateField("Действует с")
-    source_name = models.CharField("Источник", max_length=200, blank=True)
-    source_url = models.URLField("Ссылка на источник", blank=True)
-
-    class Meta:
-        verbose_name = "Тариф"
-        verbose_name_plural = "Тарифы"
-        ordering = ["utility_type", "-effective_from"]
-
-    def __str__(self):
-        return f"{self.get_utility_type_display()} — {self.rate} (с {self.effective_from})"
+# `Tariff` уехал в modules/tariffs/ шагом C1: у него не было ни одного FK и на
+# него не ссылалась ни одна модель, поэтому лист графа отделился без разрыва
+# связей. Ставки читаются через `modules.tariffs.api.get_rates_on`.
 
 # Meter codes shared by Meter.kind, MeterReading.meter and the calculation core.
 METER_KIND_CHOICES = [

@@ -52,6 +52,9 @@ INSTALLED_APPS = [
     # Шина событий (ADR-0027). Приложение — только ради журнала публикаций
     # (шаг B2); транспорту база не нужна.
     "bus",
+    # Модули целевой архитектуры. Первый — Tariffs (шаг C1): лист графа,
+    # у которого нет ни одного FK и на который никто не ссылается.
+    "modules.tariffs.apps.TariffsConfig",
 ]
 
 SITE_ID = 1
@@ -177,6 +180,14 @@ LOGOUT_REDIRECT_URL = "login"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Миграции модулей лежат в `infrastructure/`, а не в `<приложение>/migrations/`,
+# куда Django смотрит по умолчанию. Причина — правило 3.2: миграция описывает
+# схему, то есть это инфраструктура и есть, и класть её на уровень пакета
+# значило бы вынести ORM за пределы единственного слоя, которому она разрешена.
+MIGRATION_MODULES = {
+    "tariffs": "modules.tariffs.infrastructure.migrations",
+}
 
 
 # Reverse proxy / production (Caddy terminates TLS and proxies over plain HTTP)

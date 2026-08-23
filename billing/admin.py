@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib import messages
 from django.utils.html import format_html
 from .models import (
-    Apartment, Meter, Tenant, Tariff, MeterReading, MonthlyStatement, Document, Payment,
+    Apartment, Meter, Tenant, MeterReading, MonthlyStatement, Document, Payment,
 )
 from .services.statements import generate_statement
 from .services.intake import confirm_payment, reject_payment, _revert_if_no_pending
@@ -28,11 +28,8 @@ class TenantAdmin(admin.ModelAdmin):
     search_fields = ("full_name", "user__username")
     inlines = [DocumentInline]
 
-@admin.register(Tariff)
-class TariffAdmin(admin.ModelAdmin):
-    list_display = ("utility_type", "rate", "effective_from", "source_name")
-    list_filter = ("utility_type",)
-    ordering = ("utility_type", "-effective_from")
+# TariffAdmin уехал в modules/tariffs/infrastructure/admin.py шагом C1 и там
+# переписан: он ходит через команды модуля, а не правит таблицу напрямую.
 
 @admin.register(MeterReading)
 class MeterReadingAdmin(admin.ModelAdmin):

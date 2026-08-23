@@ -27,12 +27,13 @@ from django.core.exceptions import ValidationError
 from django.db.models import ProtectedError
 
 from billing.models import (
-    Apartment, Meter, MeterReading, MonthlyStatement, Tariff, Tenant,
+    Apartment, Meter, MeterReading, MonthlyStatement, Tenant,
 )
 from billing.services.calculation import MissingHeatNormError
 from billing.services.statements import (
     MissingBaselineError, generate_statement, meters_for,
 )
+from modules.tariffs.api import publish_tariff_version
 
 pytestmark = [pytest.mark.django_db, pytest.mark.characterization]
 
@@ -40,7 +41,7 @@ PERIOD = date(2026, 7, 1)
 
 
 def _tariff(code, rate):
-    Tariff.objects.create(utility_type=code, rate=Decimal(rate),
+    publish_tariff_version(utility=code, rate=Decimal(rate),
                           effective_from=date(2020, 1, 1))
 
 

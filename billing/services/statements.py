@@ -1,6 +1,9 @@
 from datetime import date
+
+from modules.tariffs import api as tariffs
+
 from .calculation import ApartmentConfig, MeterType, compute_statement
-from ..models import Apartment, Tariff, MeterReading, MonthlyStatement
+from ..models import Apartment, MeterReading, MonthlyStatement
 
 class MissingBaselineError(Exception):
     """No previous reading and no contract-fixed initial value for a meter."""
@@ -44,14 +47,14 @@ def _previous_readings(apartment, period, meters) -> dict:
     return result
 
 def _tariffs_for(period) -> dict:
-    result = {}
-    for code, _label in Tariff.UTILITY_CHOICES:
-        t = (Tariff.objects
-             .filter(utility_type=code, effective_from__lte=period)
-             .order_by("-effective_from").first())
-        if t is not None:
-            result[code] = t.rate
-    return result
+    """Ставки, действующие на дату начала периода.
+
+    Выбор версии уехал в Tariffs шагом C1; здесь остался только вызов и
+    подстановка даты. Дату подставляет Billing, а не Tariffs: тот не знает
+    понятия «расчётный период», и вопрос «что делать, если ставка сменилась в
+    середине месяца» остаётся здесь, где есть данные для ответа (ADR-0004).
+    """
+    return {code: rate.rate for code, rate in tariffs.get_rates_on(period).items()}
 
 def line_to_dict(line) -> dict:
     return {

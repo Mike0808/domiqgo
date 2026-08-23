@@ -1,7 +1,8 @@
 from datetime import date
 from decimal import Decimal
 import pytest
-from billing.models import Apartment, Meter, Tariff, MeterReading, MonthlyStatement
+from billing.models import Apartment, Meter, MeterReading, MonthlyStatement
+from modules.tariffs.api import publish_tariff_version
 from billing.services.statements import (
     MissingBaselineError, generate_statement, meters_for,
 )
@@ -13,7 +14,7 @@ def _tariffs(effective=date(2026, 7, 1)):
             "hot_water_heat_component": "2389.72", "sewage": "36.40",
             "electricity_single": "4.87"}
     for code, rate in data.items():
-        Tariff.objects.create(utility_type=code, rate=Decimal(rate), effective_from=effective)
+        publish_tariff_version(utility=code, rate=Decimal(rate), effective_from=effective)
 
 def _readings(apt, period, cold, hot, elec):
     MeterReading.objects.create(apartment=apt, period=period, meter="cold_water", value=Decimal(cold))
@@ -48,9 +49,9 @@ def test_generate_uses_previous_period_as_baseline():
 def test_generate_selects_tariff_effective_for_period():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False,
                                  electricity_meter_type=Apartment.SINGLE)
-    Tariff.objects.create(utility_type="cold_water", rate=Decimal("40.00"), effective_from=date(2025, 7, 1))
-    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
-    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2025, 7, 1))
+    publish_tariff_version(utility="cold_water", rate=Decimal("40.00"), effective_from=date(2025, 7, 1))
+    publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2025, 7, 1))
     Meter.objects.create(apartment=a, kind="cold_water", initial_value=Decimal("100"))
     Meter.objects.create(apartment=a, kind="electricity_single", initial_value=Decimal("0"))
     MeterReading.objects.create(apartment=a, period=date(2026, 6, 1), meter="cold_water", value=Decimal("100"))
@@ -67,8 +68,8 @@ def test_generate_selects_tariff_effective_for_period():
 
 def test_generate_is_idempotent_and_keeps_status():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
-    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
-    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     Meter.objects.create(apartment=a, kind="cold_water", initial_value=Decimal("0"))
     Meter.objects.create(apartment=a, kind="electricity_single", initial_value=Decimal("0"))
     MeterReading.objects.create(apartment=a, period=date(2026, 7, 1), meter="cold_water", value=Decimal("110"))
@@ -84,8 +85,8 @@ def test_generate_is_idempotent_and_keeps_status():
 
 def test_first_month_baseline_comes_from_meter_initial_values():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
-    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
-    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     # values fixed in the act at contract signing
     Meter.objects.create(apartment=a, kind="cold_water", serial_number="CW-1",
                          initial_value=Decimal("100"), initial_date=date(2026, 6, 15))
@@ -102,8 +103,8 @@ def test_first_month_baseline_comes_from_meter_initial_values():
 
 def test_baseline_falls_back_per_meter():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
-    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
-    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     Meter.objects.create(apartment=a, kind="cold_water", initial_value=Decimal("100"))
     Meter.objects.create(apartment=a, kind="electricity_single", initial_value=Decimal("1400"))
     # June has a reading for electricity only; cold water must fall back to the initial value
@@ -118,8 +119,8 @@ def test_baseline_falls_back_per_meter():
 
 def test_missing_baseline_raises_instead_of_billing_from_zero():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
-    Tariff.objects.create(utility_type="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
-    Tariff.objects.create(utility_type="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
+    publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     # no Meter rows, no prior readings
     MeterReading.objects.create(apartment=a, period=date(2026, 7, 1), meter="cold_water", value=Decimal("110"))
     MeterReading.objects.create(apartment=a, period=date(2026, 7, 1), meter="electricity_single", value=Decimal("1500"))

@@ -4,7 +4,7 @@ import pytest
 from django.contrib.auth.models import User
 from django.db import IntegrityError
 from billing.models import (
-    Apartment, Tenant, Tariff, MeterReading, MonthlyStatement,
+    Apartment, Tenant, MeterReading, MonthlyStatement,
 )
 
 pytestmark = pytest.mark.django_db
