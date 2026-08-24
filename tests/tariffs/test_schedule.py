@@ -11,7 +11,8 @@ from decimal import Decimal
 import pytest
 
 from modules.tariffs.domain import (
-    TariffSchedule, UnknownUtility, VersionNotFound,
+    DuplicateVersion, InvalidRate, TariffSchedule, TariffVersion,
+    UnknownUtility, VersionNotFound,
 )
 
 JULY = date(2026, 7, 1)
@@ -178,3 +179,80 @@ def test_versions_property_does_not_expose_the_internal_list():
     line.versions.clear()
 
     assert len(line.versions) == 1
+
+
+# --------------------------------------------------------------- инварианты
+
+def test_second_version_on_the_same_date_is_refused():
+    """Инвариант линии: «действующая на дату» обязана быть однозначной."""
+    line = _line(("48.15", JULY))
+
+    with pytest.raises(DuplicateVersion):
+        line.publish(Decimal("55.00"), JULY)
+
+
+def test_the_refused_version_does_not_reach_the_line():
+    line = _line(("48.15", JULY))
+
+    with pytest.raises(DuplicateVersion):
+        line.publish(Decimal("55.00"), JULY)
+
+    assert [v.rate for v in line.versions] == [Decimal("48.15")]
+
+
+def test_correcting_a_date_onto_an_occupied_one_is_refused():
+    line = _line(("40.00", JANUARY), ("48.15", JULY))
+
+    with pytest.raises(DuplicateVersion):
+        line.correct(JULY, effective_from=JANUARY)
+
+
+def test_a_failed_correction_leaves_the_line_as_it_was():
+    """Правка снимает версию и вставляет заново; отказ на вставке обязан
+    вернуть снятую на место, иначе линия теряет версию на ровном месте."""
+    line = _line(("40.00", JANUARY), ("48.15", JULY))
+
+    with pytest.raises(DuplicateVersion):
+        line.correct(JULY, effective_from=JANUARY)
+
+    assert [(v.effective_from, v.rate) for v in line.versions] == [
+        (JANUARY, Decimal("40.00")), (JULY, Decimal("48.15"))]
+
+
+def test_rate_must_be_positive():
+    line = TariffSchedule("cold_water")
+
+    with pytest.raises(InvalidRate):
+        line.publish(Decimal("0"), JULY)
+    with pytest.raises(InvalidRate):
+        line.publish(Decimal("-1"), JULY)
+
+
+def test_no_version_can_be_built_with_a_bad_rate():
+    """Проверка стоит на самой версии, а не в командах линии: собрать
+    неправильную версию нельзя ни одним способом, включая `replace` при
+    исправлении."""
+    with pytest.raises(InvalidRate):
+        TariffVersion(utility="cold_water", rate=Decimal("0"),
+                      effective_from=JULY)
+
+
+def test_correcting_a_rate_down_to_zero_leaves_the_line_untouched():
+    line = _line(("48.15", JULY))
+
+    with pytest.raises(InvalidRate):
+        line.correct(JULY, rate=Decimal("0"))
+
+    assert [v.rate for v in line.versions] == [Decimal("48.15")]
+
+
+def test_a_line_read_with_duplicates_still_opens():
+    """Инвариант держится на записи, а не на чтении. Дубликат, попавший в базу
+    до шага C1b или правкой руками, обязан прочитаться: замолчать целиком там,
+    где достаточно отказать в одной команде, — хуже."""
+    twins = [TariffVersion("cold_water", Decimal("48.15"), JULY),
+             TariffVersion("cold_water", Decimal("55.00"), JULY)]
+
+    line = TariffSchedule("cold_water", twins)
+
+    assert len(line.versions) == 2

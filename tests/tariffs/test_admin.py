@@ -132,6 +132,50 @@ def test_bulk_delete_withdraws_every_selected_version(owner):
     assert _published().count("TariffVersionWithdrawn") == 2
 
 
+# ------------------------------------------------------------------- отказы
+
+def test_duplicate_comes_back_as_a_form_error_not_a_server_error(owner):
+    """Владелец должен увидеть подсказку под полем, а не страницу ошибки.
+    Отказ команды до формы доходить не должен — его перехватывает проверка
+    ограничений модели, которую `ModelForm` делает сам."""
+    api.publish_tariff_version("cold_water", Decimal("48.15"), JULY)
+
+    response = owner.post(f"{CHANGELIST}add/", _form(rate="55.00"))
+
+    assert response.status_code == 200        # форма вернулась с ошибкой
+    assert "уже есть версия" in response.content.decode()
+    assert TariffVersion.objects.count() == 1
+
+
+def test_moving_a_date_onto_an_occupied_one_is_a_form_error(owner):
+    """Тот же отказ на форме правки, где услуга выключена.
+
+    Именно ради этого случая поле сделано `disabled`, а не убрано в
+    `readonly_fields`: убранное из формы поле Django исключает из проверки
+    ограничений, и правка упёрлась бы в отказ команды, то есть в ошибку
+    сервера.
+    """
+    api.publish_tariff_version("cold_water", Decimal("40.00"), date(2026, 1, 1))
+    api.publish_tariff_version("cold_water", Decimal("48.15"), JULY)
+    pk = TariffVersion.objects.get(effective_from=JULY).pk
+
+    response = owner.post(f"{CHANGELIST}{pk}/change/",
+                          _form(effective_from="2026-01-01"))
+
+    assert response.status_code == 200
+    assert "уже есть версия" in response.content.decode()
+    assert [v.effective_from for v in api.list_versions("cold_water")] == [
+        date(2026, 1, 1), JULY]
+
+
+def test_non_positive_rate_comes_back_as_a_form_error(owner):
+    response = owner.post(f"{CHANGELIST}add/", _form(rate="0"))
+
+    assert response.status_code == 200
+    assert "больше нуля" in response.content.decode()
+    assert TariffVersion.objects.count() == 0
+
+
 # -------------------------------------------------------------- объяснение
 
 def test_the_add_form_says_a_new_version_is_a_price_change(owner):

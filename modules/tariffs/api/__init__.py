@@ -28,7 +28,7 @@ from decimal import Decimal
 
 from ..application import commands, queries
 from ..domain.catalogue import UTILITIES, UnknownUtility
-from ..domain.schedule import VersionNotFound
+from ..domain.schedule import DuplicateVersion, InvalidRate, VersionNotFound
 
 
 @dataclass(frozen=True)
@@ -115,6 +115,7 @@ def withdraw_tariff_version(utility: str, effective_from: date) -> None:
 
 __all__ = [
     "Rate", "UnknownUtility", "VersionNotFound",
+    "DuplicateVersion", "InvalidRate",
     "get_rate_on", "get_rates_on", "list_versions", "utilities",
     "publish_tariff_version", "correct_tariff_version", "withdraw_tariff_version",
 ]

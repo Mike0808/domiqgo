@@ -7,6 +7,7 @@
 `TariffSchedule.rate_on`.
 """
 
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from ..domain.catalogue import UTILITIES
@@ -24,6 +25,44 @@ class TariffVersion(models.Model):
         db_table = "tariffs_tariff_version"
         verbose_name = "Версия тарифа"
         verbose_name_plural = "Тарифы"
+        # Ограничения не заменяют инвариант, а подпирают его. Правило живёт в
+        # `domain/schedule.py` и проверяется без базы; здесь — последняя черта
+        # на случай записи мимо модуля (миграция данных, правка руками, SQL).
+        # Побочная польза: `ModelForm` проверяет ограничения модели сам, и
+        # админка показывает владельцу внятную ошибку вместо отказа команды.
+        constraints = [
+            # Без `violation_error_message`: для ограничения по полям Django
+            # его игнорирует и берёт `unique_error_message()` — см. ниже.
+            models.UniqueConstraint(
+                fields=["utility", "effective_from"],
+                name="tariffs_one_version_per_utility_and_date",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(rate__gt=0),
+                name="tariffs_rate_is_positive",
+                violation_error_message="Ставка должна быть больше нуля.",
+            ),
+        ]
+
+    def unique_error_message(self, model_class, unique_check):
+        """Текст отказа для формы владельца.
+
+        Django для `UniqueConstraint` с перечисленными полями берёт именно
+        этот метод, а `violation_error_message` самого ограничения не читает —
+        «для обратной совместимости» (`UniqueConstraint.validate`). Отсюда
+        переопределение: иначе владелец увидел бы стандартное «запись с
+        такими значениями полей уже существует», из которого не следует, что
+        делать дальше.
+
+        Правило по-прежнему в домене; здесь только его перевод на язык формы.
+        """
+        if set(unique_check) == {"utility", "effective_from"}:
+            return ValidationError(
+                "У этой услуги уже есть версия, действующая с указанной даты. "
+                "Исправьте существующую версию, если это опечатка, или "
+                "выберите другую дату начала действия, если цена изменилась.",
+                code="unique_together")
+        return super().unique_error_message(model_class, unique_check)
 
     def __str__(self):
         return f"{self.get_utility_display()} — {self.rate} (с {self.effective_from})"

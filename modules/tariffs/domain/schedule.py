@@ -18,6 +18,18 @@ from decimal import Decimal
 from .catalogue import ensure_known
 
 
+class InvalidRate(ValueError):
+    """Ставка не положительна."""
+
+
+class DuplicateVersion(ValueError):
+    """В линии уже есть версия, действующая с этой даты."""
+
+
+class VersionNotFound(LookupError):
+    """В линии нет версии, начинающейся с этой даты."""
+
+
 @dataclass(frozen=True)
 class TariffVersion:
     """Ставка с датой начала действия. Конца действия нет — версию закрывает
@@ -29,9 +41,18 @@ class TariffVersion:
     source_name: str = ""
     source_url: str = ""
 
+    def __post_init__(self):
+        """Ставка проверяется здесь, а не в командах линии.
 
-class VersionNotFound(LookupError):
-    """В линии нет версии, начинающейся с этой даты."""
+        Версию нельзя собрать неправильной ни одним способом: `replace` при
+        исправлении проходит через ту же проверку, и заводить её отдельно в
+        `publish` и в `correct` не нужно. Заодно репозиторий, читая строку из
+        базы, откажется собрать версию, которой там быть не должно, — если
+        такая всё же появилась в обход модуля.
+        """
+        if self.rate <= 0:
+            raise InvalidRate(
+                f"Ставка должна быть больше нуля, получено: {self.rate}")
 
 
 class TariffSchedule:
@@ -42,6 +63,11 @@ class TariffSchedule:
         # Порядок держит линия, а не хранилище: `Meta.ordering` как способ
         # выбора версии из as-is убран сознательно — порядок не инвариант,
         # инвариант — «действующая на дату».
+        # Собранная линия не проверяется на дубликаты, хотя `_insert` их не
+        # пропускает. Разница намеренная: инвариант держится на записи. Если
+        # дубликат всё же окажется в базе (данные до шага C1b, правка руками
+        # мимо модуля), линия обязана прочитаться — иначе модуль замолчит
+        # целиком там, где достаточно отказать в одной команде.
         self._versions: list[TariffVersion] = sorted(
             versions, key=lambda v: v.effective_from)
 
@@ -131,13 +157,28 @@ class TariffSchedule:
     # ------------------------------------------------------------ внутреннее
 
     def _insert(self, version: TariffVersion) -> None:
+        """Вставка — единственная дверь в линию, поэтому инвариант «одна версия
+        на дату» проверяется здесь, а не в каждой команде отдельно."""
+        clash = self._find(version.effective_from)
+        if clash is not None:
+            raise DuplicateVersion(
+                f"У услуги «{self.utility}» уже есть версия, действующая с "
+                f"{version.effective_from:%d.%m.%Y} (ставка {clash.rate}). "
+                "Чтобы изменить её, исправьте существующую версию; чтобы "
+                "ввести новую цену — укажите другую дату начала действия.")
         self._versions.append(version)
         self._versions.sort(key=lambda v: v.effective_from)
 
-    def _require(self, effective_from: date) -> TariffVersion:
+    def _find(self, effective_from: date) -> TariffVersion | None:
         for version in self._versions:
             if version.effective_from == effective_from:
                 return version
+        return None
+
+    def _require(self, effective_from: date) -> TariffVersion:
+        version = self._find(effective_from)
+        if version is not None:
+            return version
         raise VersionNotFound(
             f"У услуги «{self.utility}» нет версии, действующей с "
             f"{effective_from:%d.%m.%Y}")
