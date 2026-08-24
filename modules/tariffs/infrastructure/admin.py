@@ -17,11 +17,34 @@ from ..api import (
 from .models import TariffVersion
 
 
+#: Различение «новая версия» и «правка версии» — смысловое, и до сих пор оно
+#: жило в коде, спецификации и журнале, то есть везде, кроме того места, где
+#: решение принимает владелец. Кнопки админки называются «Добавить» и
+#: «Изменить» и о разнице молчат. Текст ниже — не правило (правило 3.6), а
+#: перевод уже принятого решения на язык того, кто нажимает кнопку.
+ADD_HINT = (
+    "Новая версия — это изменение цены. Прежняя продолжает действовать в своём "
+    "прошлом: перерасчёт за прошедший период возьмёт ту ставку, что была тогда."
+)
+CHANGE_HINT = (
+    "Правка исправляет ошибку ввода: новой версии не появится, изменится эта. "
+    "Чтобы записать изменение цены, вернитесь к списку и добавьте новую версию "
+    "с новой датой."
+)
+
+
 @admin.register(TariffVersion)
 class TariffVersionAdmin(admin.ModelAdmin):
     list_display = ("utility", "rate", "effective_from", "source_name")
     list_filter = ("utility",)
     ordering = ("utility", "-effective_from")
+
+    def get_fieldsets(self, request, obj=None):
+        return ((None, {
+            "description": CHANGE_HINT if obj else ADD_HINT,
+            "fields": ("utility", "rate", "effective_from",
+                       "source_name", "source_url"),
+        }),)
 
     def get_readonly_fields(self, request, obj=None):
         """Услугу у заведённой версии не меняют.
