@@ -98,6 +98,13 @@ class Meter(models.Model):
     """Физический прибор учёта: номер и показание, зафиксированные в акте
     при подписании договора. Начальное показание — база первого месяца."""
     apartment = models.ForeignKey(Apartment, on_delete=models.PROTECT, related_name="meters")
+    #: Шаг C2a1: та же ссылка идентификатором, без констрейнта. Пока живут оба
+    #: поля и читается FK; переключение чтений — C2a2, снятие FK — C2a3.
+    #: Прибор принадлежит Metering, квартира — Properties, и связь между
+    #: модулями по правилу 1.3 выражается идентификатором, а не констрейнтом:
+    #: иначе таблицы двух модулей нельзя разделить, не остановив систему.
+    apartment_ref = models.PositiveIntegerField(
+        "Квартира (идентификатор)", null=True, blank=True, db_index=True)
     kind = models.CharField("Вид", max_length=32, choices=METER_KIND_CHOICES)
     serial_number = models.CharField("Заводской номер", max_length=64, blank=True)
     initial_value = models.DecimalField("Начальное показание", max_digits=12, decimal_places=3)
@@ -108,6 +115,18 @@ class Meter(models.Model):
         verbose_name = "Счётчик"
         verbose_name_plural = "Счётчики"
         unique_together = [("apartment", "kind")]
+
+    def save(self, *args, **kwargs):
+        """Запись в оба поля разом.
+
+        Зеркалить в `save`, а не править места создания: их полтора десятка,
+        и каждое пропущенное дало бы строку без ссылки — то есть прибор,
+        который после C2a2 перестанет находиться. Метод исчезнет на C2a3
+        вместе с самим FK; правилом предметной области он не является
+        (правило 1.7).
+        """
+        self.apartment_ref = self.apartment_id
+        super().save(*args, **kwargs)
 
     def __str__(self):
         n = f" № {self.serial_number}" if self.serial_number else ""
