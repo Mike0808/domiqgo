@@ -17,10 +17,10 @@ def test_apartment_defaults():
 
 def test_reading_unique_per_meter_period():
     a = Apartment.objects.create(label="кв. 1")
-    MeterReading.objects.create(apartment=a, period=date(2026, 7, 1),
+    MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1),
                                 meter="cold_water", value=Decimal("100"))
     with pytest.raises(IntegrityError):
-        MeterReading.objects.create(apartment=a, period=date(2026, 7, 1),
+        MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1),
                                     meter="cold_water", value=Decimal("101"))
 
 def test_statement_unique_per_period():

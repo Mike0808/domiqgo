@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import ProtectedError
 
-def _refuse_if_meters_remain(apartment_ids):
+def _refuse_if_history_remains(apartment_ids):
     """Временная замена `on_delete=PROTECT`, снятого вместе с внешним ключом.
 
     Защита квартиры от удаления вместе со всей историей — это [дефект
@@ -28,11 +28,17 @@ def _refuse_if_meters_remain(apartment_ids):
     поведение надо целиком, иначе «то же правило, выраженное иначе»
     превращается в другое правило.
     """
-    meters = Meter.objects.filter(apartment_id__in=list(apartment_ids))
+    ids = list(apartment_ids)
+    meters = Meter.objects.filter(apartment_id__in=ids)
     if meters.exists():
         raise ProtectedError(
             "Нельзя удалить квартиру, за которой числятся приборы учёта.",
             set(meters))
+    readings = MeterReading.objects.filter(apartment_id__in=ids)
+    if readings.exists():
+        raise ProtectedError(
+            "Нельзя удалить квартиру, за которой числятся показания счётчиков.",
+            set(readings))
 
 
 class ApartmentQuerySet(models.QuerySet):
@@ -40,7 +46,7 @@ class ApartmentQuerySet(models.QuerySet):
     галочками. Переопределения `Model.delete` он не касается."""
 
     def delete(self):
-        _refuse_if_meters_remain(self.values_list("pk", flat=True))
+        _refuse_if_history_remains(self.values_list("pk", flat=True))
         return super().delete()
 
 
@@ -77,7 +83,7 @@ class Apartment(models.Model):
     objects = ApartmentQuerySet.as_manager()
 
     def delete(self, *args, **kwargs):
-        _refuse_if_meters_remain([self.pk])
+        _refuse_if_history_remains([self.pk])
         return super().delete(*args, **kwargs)
 
     def clean(self):
@@ -164,13 +170,9 @@ class Meter(models.Model):
         return f"{self.get_kind_display()}{n}"
 
 class MeterReading(models.Model):
-    apartment = models.ForeignKey(Apartment, on_delete=models.PROTECT, related_name="readings")
-    #: Шаг C2b1: та же ссылка идентификатором, без констрейнта. Пока живут оба
-    #: поля и читается FK; переключение чтений — C2b2, снятие FK — C2b3.
-    #: Показание принадлежит Metering, квартира — Properties, и связь между
-    #: модулями по правилу 1.3 выражается идентификатором, а не констрейнтом.
-    apartment_ref = models.PositiveIntegerField(
-        "Квартира (идентификатор)", null=True, blank=True, db_index=True)
+    #: Ссылка идентификатором, без констрейнта (правило 1.3). Показание
+    #: принадлежит Metering, квартира — Properties.
+    apartment_id = models.PositiveIntegerField("Квартира", db_index=True)
     period = models.DateField("Период")
     meter = models.CharField("Счётчик", max_length=32, choices=METER_KIND_CHOICES)
     value = models.DecimalField("Показание", max_digits=12, decimal_places=3)
@@ -179,22 +181,11 @@ class MeterReading(models.Model):
     class Meta:
         verbose_name = "Показание"
         verbose_name_plural = "Показания"
-        unique_together = [("apartment", "period", "meter")]
+        unique_together = [("apartment_id", "period", "meter")]
         ordering = ["-period", "meter"]
 
-    def save(self, *args, **kwargs):
-        """Запись в оба поля разом — то же, что на C2a1 у прибора.
-
-        Зеркалить в `save`, а не править места создания: пропущенное дало бы
-        показание без ссылки, которое после C2b2 исчезнет из выборок. Метод
-        исчезнет на C2b3 вместе с самим FK; правилом предметной области он не
-        является (правило 1.7).
-        """
-        self.apartment_ref = self.apartment_id
-        super().save(*args, **kwargs)
-
     def __str__(self):
-        return f"{self.apartment} {self.period:%Y-%m} {self.meter}={self.value}"
+        return f"кв. {self.apartment_id} {self.period:%Y-%m} {self.meter}={self.value}"
 
 class MonthlyStatement(models.Model):
     UNPAID = "unpaid"; PENDING = "pending"; PAID = "paid"

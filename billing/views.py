@@ -47,7 +47,7 @@ def current_month(request):
         form = MeterReadingForm(request.POST, meters=meters, serials=serials)
         if form.is_valid():
             existing = {r.meter: r for r in
-                        MeterReading.objects.filter(apartment_ref=apartment.pk,
+                        MeterReading.objects.filter(apartment_id=apartment.pk,
                                                     period=period)}
             try:
                 with transaction.atomic():
@@ -60,8 +60,8 @@ def current_month(request):
                             obj.save()
                         else:
                             MeterReading.objects.create(
-                                apartment=apartment, period=period, meter=meter,
-                                value=value, entered_by_tenant=True)
+                                apartment_id=apartment.pk, period=period,
+                                meter=meter, value=value, entered_by_tenant=True)
                     generate_statement(apartment, period)
             except ValueError as exc:
                 messages.error(request, f"Ошибка: показание уменьшилось. {exc}")
@@ -91,7 +91,7 @@ def current_month(request):
             return redirect("current_month")
     else:
         entered = {r.meter: r.value for r in
-                   MeterReading.objects.filter(apartment_ref=apartment.pk,
+                   MeterReading.objects.filter(apartment_id=apartment.pk,
                                                period=period)}
         form = MeterReadingForm(meters=meters, serials=serials, initial=entered)
 

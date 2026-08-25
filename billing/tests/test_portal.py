@@ -21,8 +21,8 @@ def tenant_setup():
     # baseline (previous month) readings set by landlord
     prev = _period_first_of_this_month().replace(day=1)
     baseline_period = date(prev.year - 1, 12, 1) if prev.month == 1 else date(prev.year, prev.month - 1, 1)
-    MeterReading.objects.create(apartment=a, period=baseline_period, meter="cold_water", value=Decimal("100"))
-    MeterReading.objects.create(apartment=a, period=baseline_period, meter="electricity_single", value=Decimal("1400"))
+    MeterReading.objects.create(apartment_id=a.pk, period=baseline_period, meter="cold_water", value=Decimal("100"))
+    MeterReading.objects.create(apartment_id=a.pk, period=baseline_period, meter="electricity_single", value=Decimal("1400"))
     u = User.objects.create_user("ivanov", password="pass12345")
     Tenant.objects.create(user=u, apartment=a, full_name="Иванов")
     return a, u
@@ -43,7 +43,7 @@ def test_submit_readings_generates_statement(tenant_setup):
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
     assert resp.status_code == 302   # redirect after POST
     period = _period_first_of_this_month()
-    assert MeterReading.objects.filter(apartment=a, period=period, meter="cold_water",
+    assert MeterReading.objects.filter(apartment_id=a.pk, period=period, meter="cold_water",
                                        entered_by_tenant=True).exists()
     stmt = MonthlyStatement.objects.get(apartment=a, period=period)
     # (110-100)*48.15 + (1500-1400)*4.87 = 968.50 — below 10 000, not rounded
@@ -65,7 +65,7 @@ def test_backward_reading_is_rejected(tenant_setup):
     assert b"\xd1\x83\xd0\xbc\xd0\xb5\xd0\xbd" in resp.content or b"error" in resp.content.lower() \
         or "уменьш" in resp.content.decode("utf-8")
     period = _period_first_of_this_month()
-    assert not MeterReading.objects.filter(apartment=a, period=period).exists()
+    assert not MeterReading.objects.filter(apartment_id=a.pk, period=period).exists()
 
 def test_resubmit_with_backward_meter_preserves_prior_readings(tenant_setup):
     from billing.models import MeterReading
@@ -74,13 +74,13 @@ def test_resubmit_with_backward_meter_preserves_prior_readings(tenant_setup):
     # First submit succeeds and persists this-month readings.
     assert c.post("/", {"cold_water": "110", "electricity_single": "1500"}).status_code == 302
     period = _period_first_of_this_month()
-    assert MeterReading.objects.get(apartment=a, period=period, meter="cold_water").value == Decimal("110")
+    assert MeterReading.objects.get(apartment_id=a.pk, period=period, meter="cold_water").value == Decimal("110")
     # Re-submit: electricity now reads backward (1500 -> 1490 < baseline logic), cold_water is fine.
     resp = c.post("/", {"cold_water": "115", "electricity_single": "1300"})
     assert resp.status_code == 200  # rejected, re-rendered with error
     # The previously-saved cold_water reading must NOT be destroyed by the rollback.
-    assert MeterReading.objects.filter(apartment=a, period=period, meter="cold_water").exists()
-    assert MeterReading.objects.get(apartment=a, period=period, meter="cold_water").value == Decimal("110")
+    assert MeterReading.objects.filter(apartment_id=a.pk, period=period, meter="cold_water").exists()
+    assert MeterReading.objects.get(apartment_id=a.pk, period=period, meter="cold_water").value == Decimal("110")
 
 def test_tenant_cannot_see_other_apartment_history(tenant_setup):
     a, u = tenant_setup
@@ -101,7 +101,7 @@ def test_paid_month_locks_readings(tenant_setup):
     c = _login(u)
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
     assert resp.status_code == 302               # rejected with a message, not applied
-    assert not MeterReading.objects.filter(apartment=a, period=period).exists()
+    assert not MeterReading.objects.filter(apartment_id=a.pk, period=period).exists()
     stmt = MonthlyStatement.objects.get(apartment=a, period=period)
     assert stmt.status == MonthlyStatement.PAID
     assert stmt.total == Decimal("500")          # settled amount untouched
@@ -116,7 +116,7 @@ def test_pending_month_locks_readings(tenant_setup):
     c = _login(u)
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
     assert resp.status_code == 302               # rejected with a message, not applied
-    assert not MeterReading.objects.filter(apartment=a, period=period).exists()
+    assert not MeterReading.objects.filter(apartment_id=a.pk, period=period).exists()
     stmt = MonthlyStatement.objects.get(apartment=a, period=period)
     assert stmt.status == MonthlyStatement.PENDING
     assert stmt.total == Decimal("500")          # amount under review untouched
@@ -148,8 +148,8 @@ def test_missing_sewage_tariff_shows_message_not_500(db):
     # cold + electricity tariffs exist, but NO sewage tariff
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
-    MeterReading.objects.create(apartment=a, period=baseline, meter="cold_water", value=Decimal("100"))
-    MeterReading.objects.create(apartment=a, period=baseline, meter="electricity_single", value=Decimal("1400"))
+    MeterReading.objects.create(apartment_id=a.pk, period=baseline, meter="cold_water", value=Decimal("100"))
+    MeterReading.objects.create(apartment_id=a.pk, period=baseline, meter="electricity_single", value=Decimal("1400"))
     u = User.objects.create_user("petrov", password="pass12345")
     Tenant.objects.create(user=u, apartment=a, full_name="Петров")
     c = Client()

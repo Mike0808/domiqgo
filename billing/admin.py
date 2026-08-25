@@ -49,14 +49,21 @@ class TenantAdmin(admin.ModelAdmin):
 
 @admin.register(MeterReading)
 class MeterReadingAdmin(admin.ModelAdmin):
-    list_display = ("apartment", "period", "meter", "value", "entered_by_tenant")
-    list_filter = ("meter", "apartment")
+    list_display = ("apartment_label", "period", "meter", "value",
+                    "entered_by_tenant")
+    list_filter = ("meter",)
     date_hierarchy = "period"
+
+    @admin.display(description="Квартира", ordering="apartment_id")
+    def apartment_label(self, obj):
+        apartment = Apartment.objects.filter(pk=obj.apartment_id).first()
+        return apartment.label if apartment else f"— (id {obj.apartment_id})"
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         try:
-            generate_statement(obj.apartment, obj.period)
+            apartment = Apartment.objects.get(pk=obj.apartment_id)
+            generate_statement(apartment, obj.period)
             self.message_user(request, "Начисление за период пересчитано.")
         except Exception as exc:
             self.message_user(

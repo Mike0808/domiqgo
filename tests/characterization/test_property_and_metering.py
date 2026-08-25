@@ -66,9 +66,9 @@ def _hot_water_apartment(norm):
     _tariff("hot_water_cold_component", "25.86")
     _tariff("hot_water_heat_component", "2389.72")
     _tariff("electricity_single", "4.87")
-    MeterReading.objects.create(apartment=apartment, period=PERIOD,
+    MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
                                 meter="hot_water", value=Decimal("55"))
-    MeterReading.objects.create(apartment=apartment, period=PERIOD,
+    MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
                                 meter="electricity_single", value=Decimal("1500"))
     return apartment
 
@@ -142,9 +142,9 @@ def test_registered_meter_outside_the_flags_is_never_billed():
                          serial_number="HW-1", initial_value=Decimal("50"))
     _tariff("cold_water", "48.15")
     _tariff("electricity_single", "4.87")
-    MeterReading.objects.create(apartment=apartment, period=PERIOD,
+    MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
                                 meter="cold_water", value=Decimal("110"))
-    MeterReading.objects.create(apartment=apartment, period=PERIOD,
+    MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
                                 meter="electricity_single", value=Decimal("1500"))
 
     assert meters_for(apartment) == ["cold_water", "electricity_single"]
@@ -163,9 +163,9 @@ def test_flag_without_registered_meter_stops_the_calculation():
     apartment = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
     _tariff("cold_water", "48.15")
     _tariff("electricity_single", "4.87")
-    MeterReading.objects.create(apartment=apartment, period=PERIOD,
+    MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
                                 meter="cold_water", value=Decimal("110"))
-    MeterReading.objects.create(apartment=apartment, period=PERIOD,
+    MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
                                 meter="electricity_single", value=Decimal("1500"))
 
     with pytest.raises(MissingBaselineError):
@@ -196,7 +196,7 @@ def test_deleting_an_apartment_with_history_is_refused():
     """
     apartment = Apartment.objects.create(label="кв")
     Meter.objects.create(apartment_id=apartment.pk, kind="cold_water", initial_value=Decimal("100"))
-    MeterReading.objects.create(apartment=apartment, period=PERIOD,
+    MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
                                 meter="cold_water", value=Decimal("110"))
     MonthlyStatement.objects.create(apartment=apartment, period=PERIOD,
                                     total=Decimal("1000.00"))
@@ -218,7 +218,7 @@ def test_deleting_an_apartment_with_history_is_refused():
             id="meter",
         ),
         pytest.param(
-            lambda a: MeterReading.objects.create(apartment=a, period=PERIOD,
+            lambda a: MeterReading.objects.create(apartment_id=a.pk, period=PERIOD,
                                                   meter="cold_water",
                                                   value=Decimal("110")),
             id="reading",

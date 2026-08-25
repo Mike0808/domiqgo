@@ -125,7 +125,7 @@ def test_reading_lock_follows_payment_status(status, locked):
     assert client.get("/").context["locked"] is locked
 
     client.post("/", {"cold_water": "110", "electricity_single": "1500"})
-    applied = MeterReading.objects.filter(apartment=apartment, period=period).exists()
+    applied = MeterReading.objects.filter(apartment_id=apartment.pk, period=period).exists()
     assert applied is not locked
 
 
@@ -171,15 +171,15 @@ def test_invoice_is_silently_rewritten_by_a_later_reading():
     apartment = _apartment()
     _tariffs()
     period = date(2026, 7, 1)
-    MeterReading.objects.create(apartment=apartment, period=period,
+    MeterReading.objects.create(apartment_id=apartment.pk, period=period,
                                 meter="cold_water", value=Decimal("110"))
-    MeterReading.objects.create(apartment=apartment, period=period,
+    MeterReading.objects.create(apartment_id=apartment.pk, period=period,
                                 meter="electricity_single", value=Decimal("1500"))
 
     first = generate_statement(apartment, period)
     assert first.total == Decimal("968.50")
 
-    MeterReading.objects.filter(apartment=apartment, meter="cold_water").update(
+    MeterReading.objects.filter(apartment_id=apartment.pk, meter="cold_water").update(
         value=Decimal("120"))
     second = generate_statement(apartment, period)
 
