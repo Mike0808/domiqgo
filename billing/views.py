@@ -47,7 +47,8 @@ def current_month(request):
         form = MeterReadingForm(request.POST, meters=meters, serials=serials)
         if form.is_valid():
             existing = {r.meter: r for r in
-                        MeterReading.objects.filter(apartment=apartment, period=period)}
+                        MeterReading.objects.filter(apartment_ref=apartment.pk,
+                                                    period=period)}
             try:
                 with transaction.atomic():
                     for meter in meters:
@@ -90,7 +91,8 @@ def current_month(request):
             return redirect("current_month")
     else:
         entered = {r.meter: r.value for r in
-                   MeterReading.objects.filter(apartment=apartment, period=period)}
+                   MeterReading.objects.filter(apartment_ref=apartment.pk,
+                                               period=period)}
         form = MeterReadingForm(meters=meters, serials=serials, initial=entered)
 
     return render(request, "billing/current_month.html",

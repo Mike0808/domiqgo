@@ -20,10 +20,13 @@ from django.db.models import ProtectedError
 from django.test import Client
 from django.utils import timezone
 from importlib import import_module
+from unittest.mock import patch
 
 from billing.consent import PRIVACY_POLICY_VERSION
 from billing.models import Apartment, Meter, MeterReading, Tenant
-from billing.services.statements import MissingBaselineError, _previous_readings
+from billing.services.statements import (
+    MissingBaselineError, _previous_readings, _readings_map,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -34,9 +37,21 @@ READING_BACKFILL = import_module(
 PERIOD = date(2026, 7, 1)
 
 
+def freeze_period():
+    """Портал показывает текущий месяц; тесты живут в июле 2026."""
+    return patch("billing.views._current_period", return_value=PERIOD)
+
+
 @pytest.fixture
 def apartment():
-    return Apartment.objects.create(label="кв. 1")
+    """Простейшая квартира: холодная вода и однотарифный свет.
+
+    Без горячей воды и водоотведения — тогда расчёт при сдаче показаний
+    требует двух тарифов, а не пяти, и тесты этого файла остаются про ссылку,
+    а не про начисление.
+    """
+    return Apartment.objects.create(label="кв. 1", has_hot_water=False,
+                                    has_sewage=False)
 
 
 @pytest.fixture
@@ -150,6 +165,96 @@ def test_the_reading_backfill_fills_rows_written_before_the_step(apartment):
     READING_BACKFILL(django_apps, None)
 
     assert MeterReading.objects.get(pk=reading.pk).apartment_ref == apartment.pk
+
+
+# ------------------------------------- C2b2: чтения показаний по ссылке
+
+def _send_the_foreign_key_elsewhere(queryset):
+    """Развести два поля: связь уводится на другую квартиру, ссылка остаётся.
+
+    Без этого проверить шаг нечем. Пока оба поля указывают на одну квартиру,
+    чтение по связи и чтение по ссылке дают одинаковый ответ, и возврат к
+    прежнему коду тест не отличит — что и показали мутации первой редакции.
+    `update` идёт мимо `save`, поэтому зеркалирование сюда не вмешивается.
+
+    Приём годится только для чтений. На пути, который **пишет**, найденную
+    строку код сохраняет, зеркалирование тут же переписывает ссылку на ту
+    квартиру, куда уведён ключ, и разведённое состояние схлопывается само.
+    Поэтому поиск существующей строки при повторной сдаче показаний
+    (`views.py`, `existing`) остаётся здесь без различающего теста: отличить
+    чтение по ключу от чтения по ссылке на нём нечем, пока живы оба поля.
+    Различие исчезает на C2b3 вместе с ключом.
+    """
+    queryset.update(apartment=Apartment.objects.create(label="не та квартира"))
+
+
+def test_the_readings_map_finds_them_by_the_reference(apartment):
+    """`statements.py`: комплект показаний за период."""
+    MeterReading.objects.create(apartment=apartment, period=PERIOD,
+                                meter="cold_water", value=Decimal("110"))
+    _send_the_foreign_key_elsewhere(MeterReading.objects.all())
+
+    assert _readings_map(apartment, PERIOD) == {"cold_water": Decimal("110.000")}
+
+
+def test_the_baseline_finds_last_months_reading_by_the_reference(apartment):
+    """`statements.py`: показание прошлого месяца как база текущего."""
+    Meter.objects.create(apartment_id=apartment.pk, kind="cold_water",
+                         initial_value=Decimal("0"))
+    MeterReading.objects.create(apartment=apartment, period=date(2026, 6, 1),
+                                meter="cold_water", value=Decimal("100"))
+    _send_the_foreign_key_elsewhere(MeterReading.objects.all())
+
+    assert _previous_readings(apartment, PERIOD, ["cold_water"]) == {
+        "cold_water": Decimal("100")}
+
+
+def test_the_form_prefills_from_the_reference(tenant_client, apartment):
+    Meter.objects.create(apartment_id=apartment.pk, kind="cold_water",
+                         initial_value=Decimal("0"))
+    MeterReading.objects.create(apartment=apartment, period=PERIOD,
+                                meter="cold_water", value=Decimal("123.456"))
+    _send_the_foreign_key_elsewhere(MeterReading.objects.all())
+
+    with freeze_period():
+        page = tenant_client.get("/").content.decode()
+
+    assert "123.456" in page
+
+
+def test_a_neighbours_reading_is_not_taken_as_the_baseline(apartment):
+    """Без фильтра по ссылке база отсчёта собралась бы из чужих показаний —
+    и счёт вышел бы по расходу соседа."""
+    neighbour = Apartment.objects.create(label="кв. 2")
+    Meter.objects.create(apartment_id=apartment.pk, kind="cold_water",
+                         initial_value=Decimal("10"))
+    MeterReading.objects.create(apartment=neighbour, period=date(2026, 6, 1),
+                                meter="cold_water", value=Decimal("999"))
+
+    assert _previous_readings(apartment, PERIOD, ["cold_water"]) == {
+        "cold_water": Decimal("10")}
+
+
+def test_a_reading_left_without_a_reference_silently_moves_the_baseline(apartment):
+    """Цена шага, и здесь она выше, чем у приборов.
+
+    Потерянный прибор останавливает расчёт: без него нет и базы отсчёта
+    (`MissingBaselineError`). Потерянное **показание** ничего не
+    останавливает — база просто откатывается к начальному значению прибора,
+    расход выходит больше настоящего, и счёт жильцу растёт молча.
+
+    Проверка стоит здесь, чтобы это было названо: именно поэтому миграция
+    шага C2b3 обязана отказываться применяться на строках без ссылки, а не
+    заполнять их догадкой.
+    """
+    Meter.objects.create(apartment_id=apartment.pk, kind="cold_water",
+                         initial_value=Decimal("10"))
+    MeterReading.objects.create(apartment=apartment, period=date(2026, 6, 1),
+                                meter="cold_water", value=Decimal("100"))
+    MeterReading.objects.update(apartment_ref=None)
+
+    assert _previous_readings(apartment, PERIOD, ["cold_water"]) == {
+        "cold_water": Decimal("10")}          # вместо 100
 
 
 # ------------------------------------- защита взамен утраченного PROTECT

@@ -22,7 +22,8 @@ def meters_for(apartment) -> list[str]:
 
 def _readings_map(apartment, period) -> dict:
     return {r.meter: r.value
-            for r in MeterReading.objects.filter(apartment=apartment, period=period)}
+            for r in MeterReading.objects.filter(apartment_ref=apartment.pk,
+                                                 period=period)}
 
 def _previous_readings(apartment, period, meters) -> dict:
     """Baseline per meter: the latest reading before `period`, else the
@@ -35,7 +36,7 @@ def _previous_readings(apartment, period, meters) -> dict:
     result, missing = {}, []
     for meter in meters:
         r = (MeterReading.objects
-             .filter(apartment=apartment, meter=meter, period__lt=period)
+             .filter(apartment_ref=apartment.pk, meter=meter, period__lt=period)
              .order_by("-period").first())
         if r is not None:
             result[meter] = r.value
