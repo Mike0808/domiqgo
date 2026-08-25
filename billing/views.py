@@ -9,7 +9,7 @@ from django.views.static import serve
 from allauth.socialaccount.models import SocialAccount
 from .consent import PRIVACY_POLICY_VERSION
 from .forms import MeterReadingForm, ConsentForm
-from .models import Document, MeterReading, MonthlyStatement, Tenant
+from .models import Document, Meter, MeterReading, MonthlyStatement, Tenant
 from .services.calculation import MissingHeatNormError, MissingTariffError
 from .services.statements import MissingBaselineError, meters_for, generate_statement
 
@@ -34,7 +34,8 @@ def current_month(request):
         return _no_tenant_response(request)
     apartment = tenant.apartment
     meters = meters_for(apartment)
-    serials = {m.kind: m.serial_number for m in apartment.meters.all()}
+    serials = {m.kind: m.serial_number
+               for m in Meter.objects.filter(apartment_ref=apartment.pk)}
     period = _current_period()
     statement = MonthlyStatement.objects.filter(apartment=apartment, period=period).first()
     locked = statement is not None and statement.status in (MonthlyStatement.PAID, MonthlyStatement.PENDING)

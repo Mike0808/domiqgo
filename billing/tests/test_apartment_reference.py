@@ -10,13 +10,20 @@
 жильца.
 """
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
 from django.apps import apps as django_apps
+from django.utils import timezone
 from importlib import import_module
 
-from billing.models import Apartment, Meter
+from billing.consent import PRIVACY_POLICY_VERSION
+
+from billing.models import Apartment, Meter, Tenant
+from billing.services.statements import (
+    MissingBaselineError, _previous_readings,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -25,9 +32,32 @@ BACKFILL = import_module(
 ).fill_from_the_foreign_key
 
 
+PERIOD = date(2026, 7, 1)
+
+
 @pytest.fixture
 def apartment():
     return Apartment.objects.create(label="кв. 1")
+
+
+@pytest.fixture
+def tenant_client(apartment):
+    """Жилец, открывающий форму ввода показаний."""
+    from django.contrib.auth.models import User
+    from django.test import Client
+
+    user = User.objects.create_user("zhilets", password="pass12345")
+    Tenant.objects.create(user=user, apartment=apartment, full_name="Жилец",
+                          privacy_consent_at=timezone.now(),
+                          privacy_consent_version=PRIVACY_POLICY_VERSION)
+    client = Client()
+    client.login(username="zhilets", password="pass12345")
+    return client
+
+
+def _elsewhere():
+    """Другая квартира — чтобы обход связи, если он остался, дал другой ответ."""
+    return Apartment.objects.create(label="не та квартира")
 
 
 def test_a_new_meter_gets_the_reference(apartment):
@@ -84,10 +114,54 @@ def test_the_backfill_copies_each_row_its_own_value():
         (first.pk, first.pk), (second.pk, second.pk)}
 
 
-def test_reads_still_go_through_the_foreign_key(apartment):
-    """Граница шага C2a1: ссылка заведена, но ничего на неё ещё не смотрит.
-    Тест переписывается шагом C2a2 — тогда пропадёт и сам обход связи."""
-    Meter.objects.create(apartment=apartment, kind="cold_water",
-                         initial_value=Decimal("0"))
+# --------------------------------------------------- C2a2: чтения по ссылке
 
-    assert [m.kind for m in apartment.meters.all()] == ["cold_water"]
+def test_the_form_finds_meters_by_the_reference(tenant_client, apartment):
+    """`views.py`: заводские номера в форме ввода показаний."""
+    Meter.objects.create(apartment=apartment, kind="cold_water",
+                         serial_number="CW-77", initial_value=Decimal("0"))
+    Meter.objects.filter(kind="cold_water").update(apartment=_elsewhere())
+
+    assert "CW-77" in tenant_client.get("/").content.decode()
+
+
+def test_the_baseline_finds_meters_by_the_reference(apartment):
+    """`statements.py`: начальные показания как база первого месяца."""
+    Meter.objects.create(apartment=apartment, kind="cold_water",
+                         initial_value=Decimal("100"))
+    Meter.objects.filter(kind="cold_water").update(apartment=_elsewhere())
+
+    assert _previous_readings(apartment, PERIOD, ["cold_water"]) == {
+        "cold_water": Decimal("100")}
+
+
+def test_one_apartment_does_not_see_another_apartments_meters(apartment):
+    """Фильтр по ссылке — не украшение: без него база отсчёта одной квартиры
+    собралась бы из приборов всех остальных."""
+    neighbour = Apartment.objects.create(label="кв. 2")
+    Meter.objects.create(apartment=apartment, kind="cold_water",
+                         initial_value=Decimal("100"))
+    Meter.objects.create(apartment=neighbour, kind="electricity_single",
+                         initial_value=Decimal("777"))
+
+    assert _previous_readings(apartment, PERIOD, ["cold_water"]) == {
+        "cold_water": Decimal("100")}
+    with pytest.raises(MissingBaselineError):
+        _previous_readings(apartment, PERIOD, ["electricity_single"])
+
+
+def test_a_meter_left_without_a_reference_stops_the_calculation(apartment):
+    """Цена шага, названная вслух — и она оказалась приемлемой.
+
+    Пока читался FK, строка без ссылки выглядела исправной; теперь она
+    невидима. Но невидимый прибор не превращается в счёт от неявного нуля:
+    исчезает и база отсчёта, а расчёт без базы отказывается считать
+    (`MissingBaselineError`, введён до этого плана). То есть худший исход
+    шага — остановка с сообщением, а не завышенный счёт жильцу.
+    """
+    Meter.objects.create(apartment=apartment, kind="cold_water",
+                         initial_value=Decimal("100"))
+    Meter.objects.update(apartment_ref=None)
+
+    with pytest.raises(MissingBaselineError):
+        _previous_readings(apartment, PERIOD, ["cold_water"])

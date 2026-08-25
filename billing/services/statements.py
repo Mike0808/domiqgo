@@ -3,7 +3,7 @@ from datetime import date
 from modules.tariffs import api as tariffs
 
 from .calculation import ApartmentConfig, MeterType, compute_statement
-from ..models import Apartment, MeterReading, MonthlyStatement
+from ..models import Apartment, Meter, MeterReading, MonthlyStatement
 
 class MissingBaselineError(Exception):
     """No previous reading and no contract-fixed initial value for a meter."""
@@ -29,7 +29,9 @@ def _previous_readings(apartment, period, meters) -> dict:
     contract-fixed initial value from the apartment's Meter. A meter with
     neither is an error — billing from an implicit 0 overcharges the tenant.
     """
-    initials = {m.kind: m.initial_value for m in apartment.meters.all()}
+    # Шаг C2a2: приборы ищутся по ссылке, а не обходом связи модели.
+    initials = {m.kind: m.initial_value
+                for m in Meter.objects.filter(apartment_ref=apartment.pk)}
     result, missing = {}, []
     for meter in meters:
         r = (MeterReading.objects
