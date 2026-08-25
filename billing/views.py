@@ -35,7 +35,7 @@ def current_month(request):
     apartment = tenant.apartment
     meters = meters_for(apartment)
     serials = {m.kind: m.serial_number
-               for m in Meter.objects.filter(apartment_ref=apartment.pk)}
+               for m in Meter.objects.filter(apartment_id=apartment.pk)}
     period = _current_period()
     statement = MonthlyStatement.objects.filter(apartment=apartment, period=period).first()
     locked = statement is not None and statement.status in (MonthlyStatement.PAID, MonthlyStatement.PENDING)

@@ -38,8 +38,8 @@ def _tariffs():
 def _apartment(label="кв"):
     """Квартира с ХВС и электричеством; базы отсчёта — из акта."""
     a = Apartment.objects.create(label=label, has_hot_water=False, has_sewage=False)
-    Meter.objects.create(apartment=a, kind="cold_water", initial_value=Decimal("100"))
-    Meter.objects.create(apartment=a, kind="electricity_single", initial_value=Decimal("1400"))
+    Meter.objects.create(apartment_id=a.pk, kind="cold_water", initial_value=Decimal("100"))
+    Meter.objects.create(apartment_id=a.pk, kind="electricity_single", initial_value=Decimal("1400"))
     return a
 
 

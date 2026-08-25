@@ -31,7 +31,7 @@ def _previous_readings(apartment, period, meters) -> dict:
     """
     # Шаг C2a2: приборы ищутся по ссылке, а не обходом связи модели.
     initials = {m.kind: m.initial_value
-                for m in Meter.objects.filter(apartment_ref=apartment.pk)}
+                for m in Meter.objects.filter(apartment_id=apartment.pk)}
     result, missing = {}, []
     for meter in meters:
         r = (MeterReading.objects

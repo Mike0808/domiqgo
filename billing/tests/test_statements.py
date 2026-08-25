@@ -52,8 +52,8 @@ def test_generate_selects_tariff_effective_for_period():
     publish_tariff_version(utility="cold_water", rate=Decimal("40.00"), effective_from=date(2025, 7, 1))
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2025, 7, 1))
-    Meter.objects.create(apartment=a, kind="cold_water", initial_value=Decimal("100"))
-    Meter.objects.create(apartment=a, kind="electricity_single", initial_value=Decimal("0"))
+    Meter.objects.create(apartment_id=a.pk, kind="cold_water", initial_value=Decimal("100"))
+    Meter.objects.create(apartment_id=a.pk, kind="electricity_single", initial_value=Decimal("0"))
     MeterReading.objects.create(apartment=a, period=date(2026, 6, 1), meter="cold_water", value=Decimal("100"))
     MeterReading.objects.create(apartment=a, period=date(2026, 6, 1), meter="electricity_single", value=Decimal("0"))
     MeterReading.objects.create(apartment=a, period=date(2026, 7, 1), meter="cold_water", value=Decimal("110"))
@@ -70,8 +70,8 @@ def test_generate_is_idempotent_and_keeps_status():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
-    Meter.objects.create(apartment=a, kind="cold_water", initial_value=Decimal("0"))
-    Meter.objects.create(apartment=a, kind="electricity_single", initial_value=Decimal("0"))
+    Meter.objects.create(apartment_id=a.pk, kind="cold_water", initial_value=Decimal("0"))
+    Meter.objects.create(apartment_id=a.pk, kind="electricity_single", initial_value=Decimal("0"))
     MeterReading.objects.create(apartment=a, period=date(2026, 7, 1), meter="cold_water", value=Decimal("110"))
     MeterReading.objects.create(apartment=a, period=date(2026, 7, 1), meter="electricity_single", value=Decimal("1500"))
 
@@ -88,9 +88,9 @@ def test_first_month_baseline_comes_from_meter_initial_values():
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     # values fixed in the act at contract signing
-    Meter.objects.create(apartment=a, kind="cold_water", serial_number="CW-1",
+    Meter.objects.create(apartment_id=a.pk, kind="cold_water", serial_number="CW-1",
                          initial_value=Decimal("100"), initial_date=date(2026, 6, 15))
-    Meter.objects.create(apartment=a, kind="electricity_single", serial_number="E-1",
+    Meter.objects.create(apartment_id=a.pk, kind="electricity_single", serial_number="E-1",
                          initial_value=Decimal("1400"), initial_date=date(2026, 6, 15))
     # tenant's very first submission — no prior-month readings exist
     MeterReading.objects.create(apartment=a, period=date(2026, 7, 1), meter="cold_water", value=Decimal("110"))
@@ -105,8 +105,8 @@ def test_baseline_falls_back_per_meter():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
-    Meter.objects.create(apartment=a, kind="cold_water", initial_value=Decimal("100"))
-    Meter.objects.create(apartment=a, kind="electricity_single", initial_value=Decimal("1400"))
+    Meter.objects.create(apartment_id=a.pk, kind="cold_water", initial_value=Decimal("100"))
+    Meter.objects.create(apartment_id=a.pk, kind="electricity_single", initial_value=Decimal("1400"))
     # June has a reading for electricity only; cold water must fall back to the initial value
     MeterReading.objects.create(apartment=a, period=date(2026, 6, 1), meter="electricity_single", value=Decimal("1450"))
     MeterReading.objects.create(apartment=a, period=date(2026, 7, 1), meter="cold_water", value=Decimal("110"))

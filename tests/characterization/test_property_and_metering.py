@@ -60,8 +60,8 @@ def _hot_water_apartment(norm):
     apartment = Apartment.objects.create(
         label="кв", has_cold_water=False, has_hot_water=True, has_sewage=False,
         gvs_heat_norm=Decimal(norm))
-    Meter.objects.create(apartment=apartment, kind="hot_water", initial_value=Decimal("50"))
-    Meter.objects.create(apartment=apartment, kind="electricity_single",
+    Meter.objects.create(apartment_id=apartment.pk, kind="hot_water", initial_value=Decimal("50"))
+    Meter.objects.create(apartment_id=apartment.pk, kind="electricity_single",
                          initial_value=Decimal("1400"))
     _tariff("hot_water_cold_component", "25.86")
     _tariff("hot_water_heat_component", "2389.72")
@@ -135,10 +135,10 @@ def test_registered_meter_outside_the_flags_is_never_billed():
     После C2 состав определяет реестр приборов, а флаги `has_*` исчезают.
     """
     apartment = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
-    Meter.objects.create(apartment=apartment, kind="cold_water", initial_value=Decimal("100"))
-    Meter.objects.create(apartment=apartment, kind="electricity_single",
+    Meter.objects.create(apartment_id=apartment.pk, kind="cold_water", initial_value=Decimal("100"))
+    Meter.objects.create(apartment_id=apartment.pk, kind="electricity_single",
                          initial_value=Decimal("1400"))
-    Meter.objects.create(apartment=apartment, kind="hot_water",   # заведён и забыт
+    Meter.objects.create(apartment_id=apartment.pk, kind="hot_water",   # заведён и забыт
                          serial_number="HW-1", initial_value=Decimal("50"))
     _tariff("cold_water", "48.15")
     _tariff("electricity_single", "4.87")
@@ -195,7 +195,7 @@ def test_deleting_an_apartment_with_history_is_refused():
     эксплуатации — шаг C3 плана миграции, и он перепишет уже этот тест.
     """
     apartment = Apartment.objects.create(label="кв")
-    Meter.objects.create(apartment=apartment, kind="cold_water", initial_value=Decimal("100"))
+    Meter.objects.create(apartment_id=apartment.pk, kind="cold_water", initial_value=Decimal("100"))
     MeterReading.objects.create(apartment=apartment, period=PERIOD,
                                 meter="cold_water", value=Decimal("110"))
     MonthlyStatement.objects.create(apartment=apartment, period=PERIOD,
@@ -213,7 +213,7 @@ def test_deleting_an_apartment_with_history_is_refused():
     "attach",
     [
         pytest.param(
-            lambda a: Meter.objects.create(apartment=a, kind="cold_water",
+            lambda a: Meter.objects.create(apartment_id=a.pk, kind="cold_water",
                                            initial_value=Decimal("100")),
             id="meter",
         ),

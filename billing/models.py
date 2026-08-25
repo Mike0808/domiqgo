@@ -2,6 +2,47 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import ProtectedError
+
+def _refuse_if_meters_remain(apartment_ids):
+    """Временная замена `on_delete=PROTECT`, снятого вместе с внешним ключом.
+
+    Защита квартиры от удаления вместе со всей историей — это [дефект
+    №9](../docs/architecture/03-gap-analysis.md), закрытый миграцией `0007`.
+    Держался он на `on_delete`, то есть на том самом констрейнте, который
+    шаг C2a3 убирает. Вернуть его запросом из Properties нельзя: Properties —
+    лист графа зависимостей и обращаться к Metering не вправе. В целевой
+    модели вопрос снимается на **C3**, где удаление квартиры заменяется
+    выводом из эксплуатации; до тех пор правило держит эта проверка.
+
+    Правило 1.7 запрещает `billing/` получать новые правила. Здесь правило не
+    новое: то же самое, выраженное иначе, потому что прежнее выражение
+    исчезло вместе с констрейнтом. Альтернатива — вернуть уже закрытый дефект
+    с потерей данных на несколько шагов плана.
+
+    **Проверка стоит до удаления, а не в `pre_delete`.** Сигнал срабатывает
+    внутри транзакции удаления, и отказ из него оставляет её непригодной:
+    следующий же запрос падает с `TransactionManagementError`. Настоящий
+    `PROTECT` проверяет раньше, на сборе связанных объектов, — и вызывающий
+    после отказа продолжает работать. Отличие вскрылось тестом; повторять
+    поведение надо целиком, иначе «то же правило, выраженное иначе»
+    превращается в другое правило.
+    """
+    meters = Meter.objects.filter(apartment_id__in=list(apartment_ids))
+    if meters.exists():
+        raise ProtectedError(
+            "Нельзя удалить квартиру, за которой числятся приборы учёта.",
+            set(meters))
+
+
+class ApartmentQuerySet(models.QuerySet):
+    """Удаление списком — тот путь, которым удаляет админка, выделив квартиры
+    галочками. Переопределения `Model.delete` он не касается."""
+
+    def delete(self):
+        _refuse_if_meters_remain(self.values_list("pk", flat=True))
+        return super().delete()
+
 
 class Apartment(models.Model):
     SINGLE = "single"
@@ -32,6 +73,12 @@ class Apartment(models.Model):
     class Meta:
         verbose_name = "Квартира"
         verbose_name_plural = "Квартиры"
+
+    objects = ApartmentQuerySet.as_manager()
+
+    def delete(self, *args, **kwargs):
+        _refuse_if_meters_remain([self.pk])
+        return super().delete(*args, **kwargs)
 
     def clean(self):
         """Норматив подогрева обязателен при подведённой горячей воде.
@@ -97,14 +144,10 @@ METER_KIND_CHOICES = [
 class Meter(models.Model):
     """Физический прибор учёта: номер и показание, зафиксированные в акте
     при подписании договора. Начальное показание — база первого месяца."""
-    apartment = models.ForeignKey(Apartment, on_delete=models.PROTECT, related_name="meters")
-    #: Шаг C2a1: та же ссылка идентификатором, без констрейнта. Пока живут оба
-    #: поля и читается FK; переключение чтений — C2a2, снятие FK — C2a3.
-    #: Прибор принадлежит Metering, квартира — Properties, и связь между
-    #: модулями по правилу 1.3 выражается идентификатором, а не констрейнтом:
-    #: иначе таблицы двух модулей нельзя разделить, не остановив систему.
-    apartment_ref = models.PositiveIntegerField(
-        "Квартира (идентификатор)", null=True, blank=True, db_index=True)
+    #: Ссылка идентификатором, без констрейнта (правило 1.3). Прибор
+    #: принадлежит Metering, квартира — Properties, и таблицы двух модулей
+    #: нельзя разделить, пока их держит внешний ключ.
+    apartment_id = models.PositiveIntegerField("Квартира", db_index=True)
     kind = models.CharField("Вид", max_length=32, choices=METER_KIND_CHOICES)
     serial_number = models.CharField("Заводской номер", max_length=64, blank=True)
     initial_value = models.DecimalField("Начальное показание", max_digits=12, decimal_places=3)
@@ -114,19 +157,7 @@ class Meter(models.Model):
     class Meta:
         verbose_name = "Счётчик"
         verbose_name_plural = "Счётчики"
-        unique_together = [("apartment", "kind")]
-
-    def save(self, *args, **kwargs):
-        """Запись в оба поля разом.
-
-        Зеркалить в `save`, а не править места создания: их полтора десятка,
-        и каждое пропущенное дало бы строку без ссылки — то есть прибор,
-        который после C2a2 перестанет находиться. Метод исчезнет на C2a3
-        вместе с самим FK; правилом предметной области он не является
-        (правило 1.7).
-        """
-        self.apartment_ref = self.apartment_id
-        super().save(*args, **kwargs)
+        unique_together = [("apartment_id", "kind")]
 
     def __str__(self):
         n = f" № {self.serial_number}" if self.serial_number else ""

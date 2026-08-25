@@ -7,16 +7,32 @@ from .models import (
 from .services.statements import generate_statement
 from .services.intake import confirm_payment, reject_payment, _revert_if_no_pending
 
-class MeterInline(admin.TabularInline):
-    model = Meter
-    extra = 0
-
 @admin.register(Apartment)
 class ApartmentAdmin(admin.ModelAdmin):
     list_display = ("label", "electricity_meter_type", "rent", "internet")
     list_filter = ("electricity_meter_type",)
     search_fields = ("label",)
-    inlines = [MeterInline]
+    # `MeterInline` убран на шаге C2a3: вложенная форма требует внешнего
+    # ключа, а его больше нет. Приборы получили собственный раздел ниже и
+    # уедут в Metering вместе с моделью на C2c.
+
+
+@admin.register(Meter)
+class MeterAdmin(admin.ModelAdmin):
+    list_display = ("apartment_label", "kind", "serial_number",
+                    "initial_value", "initial_date")
+    list_filter = ("kind",)
+
+    @admin.display(description="Квартира", ordering="apartment_id")
+    def apartment_label(self, obj):
+        """Название квартиры по идентификатору.
+
+        Раньше его показывала связь модели. Теперь это отдельный запрос —
+        и в этом весь смысл разрыва: данные двух модулей больше не сшиты
+        соединением таблиц, а собираются тем, кто их показывает.
+        """
+        apartment = Apartment.objects.filter(pk=obj.apartment_id).first()
+        return apartment.label if apartment else f"— (id {obj.apartment_id})"
 
 class DocumentInline(admin.TabularInline):
     model = Document

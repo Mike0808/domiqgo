@@ -163,9 +163,9 @@ def test_first_month_uses_contract_initial_values(db):
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
-    Meter.objects.create(apartment=a, kind="cold_water", serial_number="CW-77",
+    Meter.objects.create(apartment_id=a.pk, kind="cold_water", serial_number="CW-77",
                          initial_value=Decimal("100"))
-    Meter.objects.create(apartment=a, kind="electricity_single", serial_number="E-77",
+    Meter.objects.create(apartment_id=a.pk, kind="electricity_single", serial_number="E-77",
                          initial_value=Decimal("1400"))
     u = User.objects.create_user("newbie", password="pass12345")
     Tenant.objects.create(user=u, apartment=a, full_name="Новосёл")
@@ -192,8 +192,8 @@ def test_missing_heat_norm_shows_message_not_a_bill_without_heating(db):
                           rate=Decimal("2389.72"), effective_from=date(2020, 1, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"),
                           effective_from=date(2020, 1, 1))
-    Meter.objects.create(apartment=a, kind="hot_water", initial_value=Decimal("50"))
-    Meter.objects.create(apartment=a, kind="electricity_single", initial_value=Decimal("1400"))
+    Meter.objects.create(apartment_id=a.pk, kind="hot_water", initial_value=Decimal("50"))
+    Meter.objects.create(apartment_id=a.pk, kind="electricity_single", initial_value=Decimal("1400"))
     u = User.objects.create_user("gvs", password="pass12345")
     Tenant.objects.create(user=u, apartment=a, full_name="Без норматива")
     c = Client()
