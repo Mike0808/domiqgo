@@ -14,16 +14,22 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from django.apps import apps as django_apps
 from django.contrib.auth.models import User
 from django.db.models import ProtectedError
 from django.test import Client
 from django.utils import timezone
+from importlib import import_module
 
 from billing.consent import PRIVACY_POLICY_VERSION
-from billing.models import Apartment, Meter, Tenant
+from billing.models import Apartment, Meter, MeterReading, Tenant
 from billing.services.statements import MissingBaselineError, _previous_readings
 
 pytestmark = pytest.mark.django_db
+
+READING_BACKFILL = import_module(
+    "billing.migrations.0012_reading_gets_an_apartment_reference"
+).fill_from_the_foreign_key
 
 PERIOD = date(2026, 7, 1)
 
@@ -79,6 +85,73 @@ def test_one_apartment_does_not_see_another_apartments_meters(apartment):
         _previous_readings(apartment, PERIOD, ["electricity_single"])
 
 
+# ----------------------------------------- C2b1: ссылка у показания
+
+def test_a_new_reading_gets_the_reference(apartment):
+    reading = MeterReading.objects.create(
+        apartment=apartment, period=PERIOD, meter="cold_water",
+        value=Decimal("110"))
+
+    assert MeterReading.objects.get(pk=reading.pk).apartment_ref == apartment.pk
+
+
+def test_correcting_a_reading_keeps_the_reference(apartment):
+    """Показание правится на месте (`obj.save()` в форме и в админке), и
+    зеркалирование обязано пережить правку."""
+    reading = MeterReading.objects.create(
+        apartment=apartment, period=PERIOD, meter="cold_water",
+        value=Decimal("110"))
+    MeterReading.objects.filter(pk=reading.pk).update(apartment_ref=None)
+
+    reading.value = Decimal("120")
+    reading.save()
+
+    assert MeterReading.objects.get(pk=reading.pk).apartment_ref == apartment.pk
+
+
+def test_moving_a_reading_to_another_apartment_moves_the_reference(apartment):
+    """Админка позволяет сменить квартиру у показания. Зеркалирование, которое
+    заполняет поле только пустым, оставило бы показание числиться за прежней
+    квартирой — и после C2b2 оно уехало бы в чужой счёт."""
+    other = Apartment.objects.create(label="кв. 2")
+    reading = MeterReading.objects.create(
+        apartment=apartment, period=PERIOD, meter="cold_water",
+        value=Decimal("110"))
+
+    reading.apartment = other
+    reading.save()
+
+    assert MeterReading.objects.get(pk=reading.pk).apartment_ref == other.pk
+
+
+def test_the_reading_backfill_copies_each_row_its_own_value():
+    """`update(apartment_ref=F("apartment_id"))`, а не одно значение на всех:
+    ошибка здесь приписала бы все показания одной квартире."""
+    first = Apartment.objects.create(label="кв. 1")
+    second = Apartment.objects.create(label="кв. 2")
+    MeterReading.objects.create(apartment=first, period=PERIOD,
+                                meter="cold_water", value=Decimal("110"))
+    MeterReading.objects.create(apartment=second, period=PERIOD,
+                                meter="cold_water", value=Decimal("220"))
+    MeterReading.objects.update(apartment_ref=None)
+
+    READING_BACKFILL(django_apps, None)
+
+    assert set(MeterReading.objects.values_list("apartment_id", "apartment_ref")) == {
+        (first.pk, first.pk), (second.pk, second.pk)}
+
+
+def test_the_reading_backfill_fills_rows_written_before_the_step(apartment):
+    reading = MeterReading.objects.create(
+        apartment=apartment, period=PERIOD, meter="cold_water",
+        value=Decimal("110"))
+    MeterReading.objects.filter(pk=reading.pk).update(apartment_ref=None)
+
+    READING_BACKFILL(django_apps, None)
+
+    assert MeterReading.objects.get(pk=reading.pk).apartment_ref == apartment.pk
+
+
 # ------------------------------------- защита взамен утраченного PROTECT
 
 def test_an_apartment_with_a_meter_is_not_deleted(apartment):
@@ -96,8 +169,8 @@ def test_an_apartment_with_a_meter_is_not_deleted(apartment):
 
 def test_bulk_delete_from_the_list_is_protected_too(apartment):
     """`queryset.delete()` — тот путь, которым удаляет админка, выделив
-    квартиры галочками. Переопределение `Model.delete` его не покрывает, и
-    защита стоит на сигнале именно поэтому."""
+    квартиры галочками. Переопределения `Model.delete` он не касается, поэтому
+    проверка продублирована в `delete()` менеджера."""
     Meter.objects.create(apartment_id=apartment.pk, kind="cold_water",
                          initial_value=Decimal("100"))
 

@@ -165,6 +165,12 @@ class Meter(models.Model):
 
 class MeterReading(models.Model):
     apartment = models.ForeignKey(Apartment, on_delete=models.PROTECT, related_name="readings")
+    #: Шаг C2b1: та же ссылка идентификатором, без констрейнта. Пока живут оба
+    #: поля и читается FK; переключение чтений — C2b2, снятие FK — C2b3.
+    #: Показание принадлежит Metering, квартира — Properties, и связь между
+    #: модулями по правилу 1.3 выражается идентификатором, а не констрейнтом.
+    apartment_ref = models.PositiveIntegerField(
+        "Квартира (идентификатор)", null=True, blank=True, db_index=True)
     period = models.DateField("Период")
     meter = models.CharField("Счётчик", max_length=32, choices=METER_KIND_CHOICES)
     value = models.DecimalField("Показание", max_digits=12, decimal_places=3)
@@ -175,6 +181,17 @@ class MeterReading(models.Model):
         verbose_name_plural = "Показания"
         unique_together = [("apartment", "period", "meter")]
         ordering = ["-period", "meter"]
+
+    def save(self, *args, **kwargs):
+        """Запись в оба поля разом — то же, что на C2a1 у прибора.
+
+        Зеркалить в `save`, а не править места создания: пропущенное дало бы
+        показание без ссылки, которое после C2b2 исчезнет из выборок. Метод
+        исчезнет на C2b3 вместе с самим FK; правилом предметной области он не
+        является (правило 1.7).
+        """
+        self.apartment_ref = self.apartment_id
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.apartment} {self.period:%Y-%m} {self.meter}={self.value}"
