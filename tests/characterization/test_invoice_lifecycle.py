@@ -18,9 +18,8 @@ from django.db import IntegrityError, transaction
 from django.test import Client
 from django.utils import timezone
 
-from billing.models import (
-    Apartment, Meter, MeterReading, MonthlyStatement, Tenant,
-)
+from modules.metering.infrastructure.models import Meter, MeterReading
+from billing.models import Apartment, MonthlyStatement, Tenant
 from billing.services.statements import generate_statement
 from modules.tariffs.api import publish_tariff_version
 
@@ -38,8 +37,8 @@ def _tariffs():
 def _apartment(label="кв"):
     """Квартира с ХВС и электричеством; базы отсчёта — из акта."""
     a = Apartment.objects.create(label=label, has_hot_water=False, has_sewage=False)
-    Meter.objects.create(apartment_id=a.pk, kind="cold_water", initial_value=Decimal("100"))
-    Meter.objects.create(apartment_id=a.pk, kind="electricity_single", initial_value=Decimal("1400"))
+    Meter.objects.create(apartment_id=a.pk, resource="cold_water", initial_value=Decimal("100"))
+    Meter.objects.create(apartment_id=a.pk, resource="electricity_single", initial_value=Decimal("1400"))
     return a
 
 
@@ -172,14 +171,14 @@ def test_invoice_is_silently_rewritten_by_a_later_reading():
     _tariffs()
     period = date(2026, 7, 1)
     MeterReading.objects.create(apartment_id=apartment.pk, period=period,
-                                meter="cold_water", value=Decimal("110"))
+                                resource="cold_water", value=Decimal("110"))
     MeterReading.objects.create(apartment_id=apartment.pk, period=period,
-                                meter="electricity_single", value=Decimal("1500"))
+                                resource="electricity_single", value=Decimal("1500"))
 
     first = generate_statement(apartment, period)
     assert first.total == Decimal("968.50")
 
-    MeterReading.objects.filter(apartment_id=apartment.pk, meter="cold_water").update(
+    MeterReading.objects.filter(apartment_id=apartment.pk, resource="cold_water").update(
         value=Decimal("120"))
     second = generate_statement(apartment, period)
 

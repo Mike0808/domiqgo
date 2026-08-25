@@ -1,8 +1,16 @@
 from django.contrib import admin
+# Приборы и показания принадлежат Metering (шаг C2c), но их админка осталась
+# здесь. Списки показывают квартиру по названию, а название принадлежит
+# Properties: обратиться к ней Metering не вправе — он лист графа зависимостей
+# (матрица §2 правил). `billing/admin.py` — интерфейсный слой, которому видны
+# оба модуля, и до появления отдельного слоя сборки экранов место админки
+# здесь. Регистрация показаний вдобавок пересчитывает счёт; это уйдёт на C2f,
+# когда Billing начнёт слушать событие.
 from django.contrib import messages
 from django.utils.html import format_html
+from modules.metering.infrastructure.models import Meter, MeterReading
 from .models import (
-    Apartment, Meter, Tenant, MeterReading, MonthlyStatement, Document, Payment,
+    Apartment, Tenant, MonthlyStatement, Document, Payment,
 )
 from .services.statements import generate_statement
 from .services.intake import confirm_payment, reject_payment, _revert_if_no_pending
@@ -19,9 +27,9 @@ class ApartmentAdmin(admin.ModelAdmin):
 
 @admin.register(Meter)
 class MeterAdmin(admin.ModelAdmin):
-    list_display = ("apartment_label", "kind", "serial_number",
+    list_display = ("apartment_label", "resource", "serial_number",
                     "initial_value", "initial_date")
-    list_filter = ("kind",)
+    list_filter = ("resource",)
 
     @admin.display(description="Квартира", ordering="apartment_id")
     def apartment_label(self, obj):
@@ -49,9 +57,9 @@ class TenantAdmin(admin.ModelAdmin):
 
 @admin.register(MeterReading)
 class MeterReadingAdmin(admin.ModelAdmin):
-    list_display = ("apartment_label", "period", "meter", "value",
+    list_display = ("apartment_label", "period", "resource", "value",
                     "entered_by_tenant")
-    list_filter = ("meter",)
+    list_filter = ("resource",)
     date_hierarchy = "period"
 
     @admin.display(description="Квартира", ordering="apartment_id")

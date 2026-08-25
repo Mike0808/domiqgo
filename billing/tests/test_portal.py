@@ -4,7 +4,8 @@ import pytest
 from django.contrib.auth.models import User
 from django.test import Client
 from django.utils import timezone
-from billing.models import Apartment, Tenant, MeterReading, MonthlyStatement
+from modules.metering.infrastructure.models import Meter, MeterReading
+from billing.models import Apartment, Tenant, MonthlyStatement
 from modules.tariffs.api import publish_tariff_version
 
 pytestmark = pytest.mark.django_db
@@ -21,8 +22,8 @@ def tenant_setup():
     # baseline (previous month) readings set by landlord
     prev = _period_first_of_this_month().replace(day=1)
     baseline_period = date(prev.year - 1, 12, 1) if prev.month == 1 else date(prev.year, prev.month - 1, 1)
-    MeterReading.objects.create(apartment_id=a.pk, period=baseline_period, meter="cold_water", value=Decimal("100"))
-    MeterReading.objects.create(apartment_id=a.pk, period=baseline_period, meter="electricity_single", value=Decimal("1400"))
+    MeterReading.objects.create(apartment_id=a.pk, period=baseline_period, resource="cold_water", value=Decimal("100"))
+    MeterReading.objects.create(apartment_id=a.pk, period=baseline_period, resource="electricity_single", value=Decimal("1400"))
     u = User.objects.create_user("ivanov", password="pass12345")
     Tenant.objects.create(user=u, apartment=a, full_name="Иванов")
     return a, u
@@ -43,7 +44,7 @@ def test_submit_readings_generates_statement(tenant_setup):
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
     assert resp.status_code == 302   # redirect after POST
     period = _period_first_of_this_month()
-    assert MeterReading.objects.filter(apartment_id=a.pk, period=period, meter="cold_water",
+    assert MeterReading.objects.filter(apartment_id=a.pk, period=period, resource="cold_water",
                                        entered_by_tenant=True).exists()
     stmt = MonthlyStatement.objects.get(apartment=a, period=period)
     # (110-100)*48.15 + (1500-1400)*4.87 = 968.50 — below 10 000, not rounded
@@ -68,19 +69,19 @@ def test_backward_reading_is_rejected(tenant_setup):
     assert not MeterReading.objects.filter(apartment_id=a.pk, period=period).exists()
 
 def test_resubmit_with_backward_meter_preserves_prior_readings(tenant_setup):
-    from billing.models import MeterReading
+    
     a, u = tenant_setup
     c = _login(u)
     # First submit succeeds and persists this-month readings.
     assert c.post("/", {"cold_water": "110", "electricity_single": "1500"}).status_code == 302
     period = _period_first_of_this_month()
-    assert MeterReading.objects.get(apartment_id=a.pk, period=period, meter="cold_water").value == Decimal("110")
+    assert MeterReading.objects.get(apartment_id=a.pk, period=period, resource="cold_water").value == Decimal("110")
     # Re-submit: electricity now reads backward (1500 -> 1490 < baseline logic), cold_water is fine.
     resp = c.post("/", {"cold_water": "115", "electricity_single": "1300"})
     assert resp.status_code == 200  # rejected, re-rendered with error
     # The previously-saved cold_water reading must NOT be destroyed by the rollback.
-    assert MeterReading.objects.filter(apartment_id=a.pk, period=period, meter="cold_water").exists()
-    assert MeterReading.objects.get(apartment_id=a.pk, period=period, meter="cold_water").value == Decimal("110")
+    assert MeterReading.objects.filter(apartment_id=a.pk, period=period, resource="cold_water").exists()
+    assert MeterReading.objects.get(apartment_id=a.pk, period=period, resource="cold_water").value == Decimal("110")
 
 def test_tenant_cannot_see_other_apartment_history(tenant_setup):
     a, u = tenant_setup
@@ -141,15 +142,15 @@ def test_user_without_tenant_profile_gets_friendly_page(db):
 
 def test_missing_sewage_tariff_shows_message_not_500(db):
     from django.contrib.auth.models import User
-    from billing.models import Apartment, Tenant, MeterReading, MonthlyStatement
+    from billing.models import Apartment, Tenant, MonthlyStatement
     period = _period_first_of_this_month()
     baseline = date(period.year - 1, 12, 1) if period.month == 1 else date(period.year, period.month - 1, 1)
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=True)
     # cold + electricity tariffs exist, but NO sewage tariff
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
-    MeterReading.objects.create(apartment_id=a.pk, period=baseline, meter="cold_water", value=Decimal("100"))
-    MeterReading.objects.create(apartment_id=a.pk, period=baseline, meter="electricity_single", value=Decimal("1400"))
+    MeterReading.objects.create(apartment_id=a.pk, period=baseline, resource="cold_water", value=Decimal("100"))
+    MeterReading.objects.create(apartment_id=a.pk, period=baseline, resource="electricity_single", value=Decimal("1400"))
     u = User.objects.create_user("petrov", password="pass12345")
     Tenant.objects.create(user=u, apartment=a, full_name="Петров")
     c = Client()
@@ -159,13 +160,13 @@ def test_missing_sewage_tariff_shows_message_not_500(db):
     assert not MonthlyStatement.objects.filter(apartment=a, period=period).exists()
 
 def test_first_month_uses_contract_initial_values(db):
-    from billing.models import Meter
+    
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
-    Meter.objects.create(apartment_id=a.pk, kind="cold_water", serial_number="CW-77",
+    Meter.objects.create(apartment_id=a.pk, resource="cold_water", serial_number="CW-77",
                          initial_value=Decimal("100"))
-    Meter.objects.create(apartment_id=a.pk, kind="electricity_single", serial_number="E-77",
+    Meter.objects.create(apartment_id=a.pk, resource="electricity_single", serial_number="E-77",
                          initial_value=Decimal("1400"))
     u = User.objects.create_user("newbie", password="pass12345")
     Tenant.objects.create(user=u, apartment=a, full_name="Новосёл")
@@ -182,7 +183,7 @@ def test_first_month_uses_contract_initial_values(db):
 
 def test_missing_heat_norm_shows_message_not_a_bill_without_heating(db):
     """Дефект №29: раньше здесь выставлялся счёт с нулевым подогревом."""
-    from billing.models import Meter
+    
     a = Apartment.objects.create(label="кв", has_cold_water=False,
                                  has_hot_water=True, has_sewage=False)
     assert a.gvs_heat_norm == Decimal("0")   # владелец не открыл квитанцию УК
@@ -192,8 +193,8 @@ def test_missing_heat_norm_shows_message_not_a_bill_without_heating(db):
                           rate=Decimal("2389.72"), effective_from=date(2020, 1, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"),
                           effective_from=date(2020, 1, 1))
-    Meter.objects.create(apartment_id=a.pk, kind="hot_water", initial_value=Decimal("50"))
-    Meter.objects.create(apartment_id=a.pk, kind="electricity_single", initial_value=Decimal("1400"))
+    Meter.objects.create(apartment_id=a.pk, resource="hot_water", initial_value=Decimal("50"))
+    Meter.objects.create(apartment_id=a.pk, resource="electricity_single", initial_value=Decimal("1400"))
     u = User.objects.create_user("gvs", password="pass12345")
     Tenant.objects.create(user=u, apartment=a, full_name="Без норматива")
     c = Client()

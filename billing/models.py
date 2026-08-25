@@ -20,6 +20,15 @@ def _refuse_if_history_remains(apartment_ids):
     исчезло вместе с констрейнтом. Альтернатива — вернуть уже закрытый дефект
     с потерей данных на несколько шагов плана.
 
+    **Спрашивает Metering через публичный API.** Приборы и показания уехали в
+    модуль шагом C2c, и заглядывать в его таблицы отсюда нельзя. Обращение
+    `billing → metering` разрешено матрицей §2; обратное — нет, и потому
+    проверка живёт здесь, а не в модуле. Побочное следствие: у `ProtectedError`
+    больше не заполняется перечень удерживающих объектов — это строки чужого
+    модуля, и выпускать их наружу моделями значило бы вернуть ту связь, ради
+    разрыва которой всё и делалось. Тип исключения и текст сохранены, а
+    перечень не читал никто.
+
     **Проверка стоит до удаления, а не в `pre_delete`.** Сигнал срабатывает
     внутри транзакции удаления, и отказ из него оставляет её непригодной:
     следующий же запрос падает с `TransactionManagementError`. Настоящий
@@ -28,17 +37,17 @@ def _refuse_if_history_remains(apartment_ids):
     поведение надо целиком, иначе «то же правило, выраженное иначе»
     превращается в другое правило.
     """
-    ids = list(apartment_ids)
-    meters = Meter.objects.filter(apartment_id__in=ids)
-    if meters.exists():
-        raise ProtectedError(
-            "Нельзя удалить квартиру, за которой числятся приборы учёта.",
-            set(meters))
-    readings = MeterReading.objects.filter(apartment_id__in=ids)
-    if readings.exists():
-        raise ProtectedError(
-            "Нельзя удалить квартиру, за которой числятся показания счётчиков.",
-            set(readings))
+    from modules.metering import api as metering
+
+    for apartment_id in apartment_ids:
+        if metering.has_meters(apartment_id):
+            raise ProtectedError(
+                "Нельзя удалить квартиру, за которой числятся приборы учёта.",
+                set())
+        if metering.has_readings(apartment_id):
+            raise ProtectedError(
+                "Нельзя удалить квартиру, за которой числятся показания "
+                "счётчиков.", set())
 
 
 class ApartmentQuerySet(models.QuerySet):
@@ -138,54 +147,11 @@ class Tenant(models.Model):
 # него не ссылалась ни одна модель, поэтому лист графа отделился без разрыва
 # связей. Ставки читаются через `modules.tariffs.api.get_rates_on`.
 
-# Meter codes shared by Meter.kind, MeterReading.meter and the calculation core.
-METER_KIND_CHOICES = [
-    ("cold_water", "Холодная вода"),
-    ("hot_water", "Горячая вода"),
-    ("electricity_single", "Электроэнергия"),
-    ("electricity_day", "Электроэнергия (день)"),
-    ("electricity_night", "Электроэнергия (ночь)"),
-]
-
-class Meter(models.Model):
-    """Физический прибор учёта: номер и показание, зафиксированные в акте
-    при подписании договора. Начальное показание — база первого месяца."""
-    #: Ссылка идентификатором, без констрейнта (правило 1.3). Прибор
-    #: принадлежит Metering, квартира — Properties, и таблицы двух модулей
-    #: нельзя разделить, пока их держит внешний ключ.
-    apartment_id = models.PositiveIntegerField("Квартира", db_index=True)
-    kind = models.CharField("Вид", max_length=32, choices=METER_KIND_CHOICES)
-    serial_number = models.CharField("Заводской номер", max_length=64, blank=True)
-    initial_value = models.DecimalField("Начальное показание", max_digits=12, decimal_places=3)
-    initial_date = models.DateField("Дата фиксации", null=True, blank=True,
-                                    help_text="Дата акта / подписания договора.")
-
-    class Meta:
-        verbose_name = "Счётчик"
-        verbose_name_plural = "Счётчики"
-        unique_together = [("apartment_id", "kind")]
-
-    def __str__(self):
-        n = f" № {self.serial_number}" if self.serial_number else ""
-        return f"{self.get_kind_display()}{n}"
-
-class MeterReading(models.Model):
-    #: Ссылка идентификатором, без констрейнта (правило 1.3). Показание
-    #: принадлежит Metering, квартира — Properties.
-    apartment_id = models.PositiveIntegerField("Квартира", db_index=True)
-    period = models.DateField("Период")
-    meter = models.CharField("Счётчик", max_length=32, choices=METER_KIND_CHOICES)
-    value = models.DecimalField("Показание", max_digits=12, decimal_places=3)
-    entered_by_tenant = models.BooleanField(default=False)
-
-    class Meta:
-        verbose_name = "Показание"
-        verbose_name_plural = "Показания"
-        unique_together = [("apartment_id", "period", "meter")]
-        ordering = ["-period", "meter"]
-
-    def __str__(self):
-        return f"кв. {self.apartment_id} {self.period:%Y-%m} {self.meter}={self.value}"
+# `METER_KIND_CHOICES`, `Meter` и `MeterReading` уехали в
+# `modules/metering/` шагом C2c плана миграции. Таблицы переименованы в
+# `metering_meter` и `metering_reading`; словарь стал каталогом видов ресурса
+# `modules/metering/domain/catalogue.py`. Читать их отсюда следует только
+# через `modules.metering.api`.
 
 class MonthlyStatement(models.Model):
     UNPAID = "unpaid"; PENDING = "pending"; PAID = "paid"

@@ -20,8 +20,9 @@ from django.db.models import ProtectedError
 from django.test import Client
 from django.utils import timezone
 
+from modules.metering.infrastructure.models import Meter, MeterReading
 from billing.consent import PRIVACY_POLICY_VERSION
-from billing.models import Apartment, Meter, MeterReading, Tenant
+from billing.models import Apartment, Tenant
 from billing.services.statements import (
     MissingBaselineError, _previous_readings, _readings_map,
 )
@@ -64,7 +65,7 @@ def tenant_client(apartment):
 
 def test_the_form_finds_meters_by_the_reference(tenant_client, apartment):
     """`views.py`: заводские номера в форме ввода показаний."""
-    Meter.objects.create(apartment_id=apartment.pk, kind="cold_water",
+    Meter.objects.create(apartment_id=apartment.pk, resource="cold_water",
                          serial_number="CW-77", initial_value=Decimal("0"))
 
     assert "CW-77" in tenant_client.get("/").content.decode()
@@ -72,7 +73,7 @@ def test_the_form_finds_meters_by_the_reference(tenant_client, apartment):
 
 def test_the_baseline_finds_meters_by_the_reference(apartment):
     """`statements.py`: начальные показания как база первого месяца."""
-    Meter.objects.create(apartment_id=apartment.pk, kind="cold_water",
+    Meter.objects.create(apartment_id=apartment.pk, resource="cold_water",
                          initial_value=Decimal("100"))
 
     assert _previous_readings(apartment, PERIOD, ["cold_water"]) == {
@@ -81,11 +82,11 @@ def test_the_baseline_finds_meters_by_the_reference(apartment):
 
 def test_the_baseline_finds_last_months_reading_by_the_reference(apartment):
     """`statements.py`: показание прошлого месяца как база текущего."""
-    Meter.objects.create(apartment_id=apartment.pk, kind="cold_water",
+    Meter.objects.create(apartment_id=apartment.pk, resource="cold_water",
                          initial_value=Decimal("0"))
     MeterReading.objects.create(apartment_id=apartment.pk,
                                 period=date(2026, 6, 1),
-                                meter="cold_water", value=Decimal("100"))
+                                resource="cold_water", value=Decimal("100"))
 
     assert _previous_readings(apartment, PERIOD, ["cold_water"]) == {
         "cold_water": Decimal("100")}
@@ -94,16 +95,16 @@ def test_the_baseline_finds_last_months_reading_by_the_reference(apartment):
 def test_the_readings_map_finds_them_by_the_reference(apartment):
     """`statements.py`: комплект показаний за период."""
     MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
-                                meter="cold_water", value=Decimal("110"))
+                                resource="cold_water", value=Decimal("110"))
 
     assert _readings_map(apartment, PERIOD) == {"cold_water": Decimal("110.000")}
 
 
 def test_the_form_prefills_from_the_reference(tenant_client, apartment):
-    Meter.objects.create(apartment_id=apartment.pk, kind="cold_water",
+    Meter.objects.create(apartment_id=apartment.pk, resource="cold_water",
                          initial_value=Decimal("0"))
     MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
-                                meter="cold_water", value=Decimal("123.456"))
+                                resource="cold_water", value=Decimal("123.456"))
 
     with freeze_period():
         page = tenant_client.get("/").content.decode()
@@ -117,9 +118,9 @@ def test_one_apartment_does_not_see_another_apartments_meters(apartment):
     """Фильтр по ссылке — не украшение: без него база отсчёта одной квартиры
     собралась бы из приборов всех остальных."""
     neighbour = Apartment.objects.create(label="кв. 2")
-    Meter.objects.create(apartment_id=apartment.pk, kind="cold_water",
+    Meter.objects.create(apartment_id=apartment.pk, resource="cold_water",
                          initial_value=Decimal("100"))
-    Meter.objects.create(apartment_id=neighbour.pk, kind="electricity_single",
+    Meter.objects.create(apartment_id=neighbour.pk, resource="electricity_single",
                          initial_value=Decimal("777"))
 
     assert _previous_readings(apartment, PERIOD, ["cold_water"]) == {
@@ -132,11 +133,11 @@ def test_a_neighbours_reading_is_not_taken_as_the_baseline(apartment):
     """Без фильтра по ссылке база отсчёта собралась бы из чужих показаний —
     и счёт вышел бы по расходу соседа."""
     neighbour = Apartment.objects.create(label="кв. 2")
-    Meter.objects.create(apartment_id=apartment.pk, kind="cold_water",
+    Meter.objects.create(apartment_id=apartment.pk, resource="cold_water",
                          initial_value=Decimal("10"))
     MeterReading.objects.create(apartment_id=neighbour.pk,
                                 period=date(2026, 6, 1),
-                                meter="cold_water", value=Decimal("999"))
+                                resource="cold_water", value=Decimal("999"))
 
     assert _previous_readings(apartment, PERIOD, ["cold_water"]) == {
         "cold_water": Decimal("10")}
@@ -145,7 +146,7 @@ def test_a_neighbours_reading_is_not_taken_as_the_baseline(apartment):
 def test_a_neighbours_reading_does_not_reach_this_period(apartment):
     neighbour = Apartment.objects.create(label="кв. 2")
     MeterReading.objects.create(apartment_id=neighbour.pk, period=PERIOD,
-                                meter="cold_water", value=Decimal("999"))
+                                resource="cold_water", value=Decimal("999"))
 
     assert _readings_map(apartment, PERIOD) == {}
 
@@ -155,7 +156,7 @@ def test_a_neighbours_reading_does_not_reach_this_period(apartment):
 def test_an_apartment_with_a_meter_is_not_deleted(apartment):
     """Дефект №9 закрыт по-прежнему, хотя констрейнта, которым его закрыли,
     больше нет."""
-    Meter.objects.create(apartment_id=apartment.pk, kind="cold_water",
+    Meter.objects.create(apartment_id=apartment.pk, resource="cold_water",
                          initial_value=Decimal("100"))
 
     with pytest.raises(ProtectedError):
@@ -169,7 +170,7 @@ def test_an_apartment_with_readings_is_not_deleted(apartment):
     """Показания держат квартиру сами, без приборов: строка истории есть, и
     удалять её вместе с квартирой молча нельзя."""
     MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
-                                meter="cold_water", value=Decimal("110"))
+                                resource="cold_water", value=Decimal("110"))
 
     with pytest.raises(ProtectedError):
         apartment.delete()
@@ -181,7 +182,7 @@ def test_bulk_delete_from_the_list_is_protected_too(apartment):
     """`queryset.delete()` — тот путь, которым удаляет админка, выделив
     квартиры галочками. Переопределения `Model.delete` он не касается, поэтому
     проверка продублирована в `delete()` менеджера."""
-    Meter.objects.create(apartment_id=apartment.pk, kind="cold_water",
+    Meter.objects.create(apartment_id=apartment.pk, resource="cold_water",
                          initial_value=Decimal("100"))
 
     with pytest.raises(ProtectedError):
@@ -192,7 +193,7 @@ def test_bulk_delete_from_the_list_is_protected_too(apartment):
 
 def test_bulk_delete_is_protected_by_readings_too(apartment):
     MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
-                                meter="cold_water", value=Decimal("110"))
+                                resource="cold_water", value=Decimal("110"))
 
     with pytest.raises(ProtectedError):
         Apartment.objects.filter(pk=apartment.pk).delete()
@@ -202,12 +203,12 @@ def test_bulk_delete_is_protected_by_readings_too(apartment):
 
 @pytest.mark.parametrize("attach, expected", [
     pytest.param(
-        lambda a: Meter.objects.create(apartment_id=a.pk, kind="cold_water",
+        lambda a: Meter.objects.create(apartment_id=a.pk, resource="cold_water",
                                        initial_value=Decimal("100")),
         "приборы учёта", id="meter"),
     pytest.param(
         lambda a: MeterReading.objects.create(
-            apartment_id=a.pk, period=PERIOD, meter="cold_water",
+            apartment_id=a.pk, period=PERIOD, resource="cold_water",
             value=Decimal("110")),
         "показания счётчиков", id="reading"),
 ])
@@ -231,12 +232,12 @@ def test_an_apartment_without_history_still_deletes(apartment):
 
 @pytest.mark.parametrize("attach", [
     pytest.param(
-        lambda a: Meter.objects.create(apartment_id=a.pk, kind="cold_water",
+        lambda a: Meter.objects.create(apartment_id=a.pk, resource="cold_water",
                                        initial_value=Decimal("100")),
         id="meter"),
     pytest.param(
         lambda a: MeterReading.objects.create(
-            apartment_id=a.pk, period=PERIOD, meter="cold_water",
+            apartment_id=a.pk, period=PERIOD, resource="cold_water",
             value=Decimal("110")),
         id="reading"),
 ])

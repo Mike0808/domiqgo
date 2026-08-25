@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     # Модули целевой архитектуры. Первый — Tariffs (шаг C1): лист графа,
     # у которого нет ни одного FK и на который никто не ссылается.
     "modules.tariffs.apps.TariffsConfig",
+    "modules.metering.apps.MeteringConfig",
 ]
 
 SITE_ID = 1
@@ -187,6 +188,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # значило бы вынести ORM за пределы единственного слоя, которому она разрешена.
 MIGRATION_MODULES = {
     "tariffs": "modules.tariffs.infrastructure.migrations",
+    "metering": "modules.metering.infrastructure.migrations",
 }
 
 

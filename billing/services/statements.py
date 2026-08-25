@@ -1,9 +1,10 @@
 from datetime import date
 
+from modules.metering import api as metering
 from modules.tariffs import api as tariffs
 
 from .calculation import ApartmentConfig, MeterType, compute_statement
-from ..models import Apartment, Meter, MeterReading, MonthlyStatement
+from ..models import Apartment, MonthlyStatement
 
 class MissingBaselineError(Exception):
     """No previous reading and no contract-fixed initial value for a meter."""
@@ -21,25 +22,22 @@ def meters_for(apartment) -> list[str]:
     return meters
 
 def _readings_map(apartment, period) -> dict:
-    return {r.meter: r.value
-            for r in MeterReading.objects.filter(apartment_id=apartment.pk,
-                                                 period=period)}
+    return metering.get_readings(apartment.pk, period)
 
 def _previous_readings(apartment, period, meters) -> dict:
     """Baseline per meter: the latest reading before `period`, else the
     contract-fixed initial value from the apartment's Meter. A meter with
     neither is an error — billing from an implicit 0 overcharges the tenant.
     """
-    # Шаг C2a2: приборы ищутся по ссылке, а не обходом связи модели.
-    initials = {m.kind: m.initial_value
-                for m in Meter.objects.filter(apartment_id=apartment.pk)}
+    # Шаг C2c: приборы и показания спрашиваются у Metering, а не читаются
+    # из собственных таблиц — их у Billing больше нет.
+    initials = {m.resource: m.initial_value
+                for m in metering.get_expected_meters(apartment.pk)}
     result, missing = {}, []
     for meter in meters:
-        r = (MeterReading.objects
-             .filter(apartment_id=apartment.pk, meter=meter, period__lt=period)
-             .order_by("-period").first())
-        if r is not None:
-            result[meter] = r.value
+        previous = metering.get_baseline_value(apartment.pk, meter, period)
+        if previous is not None:
+            result[meter] = previous
         elif meter in initials:
             result[meter] = initials[meter]
         else:

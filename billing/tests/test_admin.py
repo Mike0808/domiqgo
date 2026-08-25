@@ -3,7 +3,8 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth.models import User
 from django.test import Client
-from billing.models import Apartment, MeterReading, MonthlyStatement
+from modules.metering.infrastructure.models import Meter, MeterReading
+from billing.models import Apartment, MonthlyStatement
 from modules.tariffs.api import publish_tariff_version
 
 pytestmark = pytest.mark.django_db
@@ -21,14 +22,14 @@ def test_admin_apartment_changelist_loads(admin_client):
     assert resp.status_code == 200
 
 def test_regenerate_action_recomputes_total(admin_client):
-    from billing.models import Meter
+    
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
-    Meter.objects.create(apartment_id=a.pk, kind="cold_water", initial_value=Decimal("0"))
-    Meter.objects.create(apartment_id=a.pk, kind="electricity_single", initial_value=Decimal("0"))
-    MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), meter="cold_water", value=Decimal("110"))
-    MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), meter="electricity_single", value=Decimal("1600"))
+    Meter.objects.create(apartment_id=a.pk, resource="cold_water", initial_value=Decimal("0"))
+    Meter.objects.create(apartment_id=a.pk, resource="electricity_single", initial_value=Decimal("0"))
+    MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), resource="cold_water", value=Decimal("110"))
+    MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), resource="electricity_single", value=Decimal("1600"))
     stmt = MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1))
 
     admin_client.post("/admin/billing/monthlystatement/", {
@@ -40,14 +41,14 @@ def test_regenerate_action_recomputes_total(admin_client):
     assert stmt.total == Decimal("13050.00")
 
 def test_regenerate_action_reports_failure_without_500(admin_client):
-    from billing.models import Meter
+    
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=True)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
-    Meter.objects.create(apartment_id=a.pk, kind="cold_water", initial_value=Decimal("0"))
-    Meter.objects.create(apartment_id=a.pk, kind="electricity_single", initial_value=Decimal("0"))
-    MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), meter="cold_water", value=Decimal("110"))
-    MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), meter="electricity_single", value=Decimal("1600"))
+    Meter.objects.create(apartment_id=a.pk, resource="cold_water", initial_value=Decimal("0"))
+    Meter.objects.create(apartment_id=a.pk, resource="electricity_single", initial_value=Decimal("0"))
+    MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), resource="cold_water", value=Decimal("110"))
+    MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), resource="electricity_single", value=Decimal("1600"))
     stmt = MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1))  # sewage tariff missing
     resp = admin_client.post("/admin/billing/monthlystatement/", {
         "action": "regenerate_statements",
@@ -56,16 +57,16 @@ def test_regenerate_action_reports_failure_without_500(admin_client):
     assert resp.status_code == 200  # reported via messages, not a 500
 
 def test_admin_saving_reading_recalculates_statement(admin_client):
-    from billing.models import Meter
+    
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
-    Meter.objects.create(apartment_id=a.pk, kind="cold_water", initial_value=Decimal("100"))
-    Meter.objects.create(apartment_id=a.pk, kind="electricity_single", initial_value=Decimal("1400"))
-    MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), meter="electricity_single", value=Decimal("1500"))
-    resp = admin_client.post("/admin/billing/meterreading/add/", {
+    Meter.objects.create(apartment_id=a.pk, resource="cold_water", initial_value=Decimal("100"))
+    Meter.objects.create(apartment_id=a.pk, resource="electricity_single", initial_value=Decimal("1400"))
+    MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), resource="electricity_single", value=Decimal("1500"))
+    resp = admin_client.post("/admin/metering/meterreading/add/", {
         "apartment_id": str(a.pk), "period": "2026-07-01",
-        "meter": "cold_water", "value": "110",
+        "resource": "cold_water", "value": "110",
     }, follow=True)
     assert resp.status_code == 200
     stmt = MonthlyStatement.objects.get(apartment=a, period=date(2026, 7, 1))

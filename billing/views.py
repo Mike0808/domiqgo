@@ -7,9 +7,10 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.static import serve
 from allauth.socialaccount.models import SocialAccount
+from modules.metering import api as metering
 from .consent import PRIVACY_POLICY_VERSION
 from .forms import MeterReadingForm, ConsentForm
-from .models import Document, Meter, MeterReading, MonthlyStatement, Tenant
+from .models import Document, MonthlyStatement, Tenant
 from .services.calculation import MissingHeatNormError, MissingTariffError
 from .services.statements import MissingBaselineError, meters_for, generate_statement
 
@@ -34,8 +35,8 @@ def current_month(request):
         return _no_tenant_response(request)
     apartment = tenant.apartment
     meters = meters_for(apartment)
-    serials = {m.kind: m.serial_number
-               for m in Meter.objects.filter(apartment_id=apartment.pk)}
+    serials = {m.resource: m.serial_number
+               for m in metering.get_expected_meters(apartment.pk)}
     period = _current_period()
     statement = MonthlyStatement.objects.filter(apartment=apartment, period=period).first()
     locked = statement is not None and statement.status in (MonthlyStatement.PAID, MonthlyStatement.PENDING)
@@ -46,22 +47,12 @@ def current_month(request):
             return redirect("current_month")
         form = MeterReadingForm(request.POST, meters=meters, serials=serials)
         if form.is_valid():
-            existing = {r.meter: r for r in
-                        MeterReading.objects.filter(apartment_id=apartment.pk,
-                                                    period=period)}
             try:
                 with transaction.atomic():
-                    for meter in meters:
-                        value = form.cleaned_data[meter]
-                        obj = existing.get(meter)
-                        if obj:
-                            obj.value = value
-                            obj.entered_by_tenant = True
-                            obj.save()
-                        else:
-                            MeterReading.objects.create(
-                                apartment_id=apartment.pk, period=period,
-                                meter=meter, value=value, entered_by_tenant=True)
+                    metering.submit_readings(
+                        apartment.pk, period,
+                        {meter: form.cleaned_data[meter] for meter in meters},
+                        entered_by_tenant=True)
                     generate_statement(apartment, period)
             except ValueError as exc:
                 messages.error(request, f"Ошибка: показание уменьшилось. {exc}")
@@ -90,9 +81,7 @@ def current_month(request):
             messages.success(request, "Показания сохранены.")
             return redirect("current_month")
     else:
-        entered = {r.meter: r.value for r in
-                   MeterReading.objects.filter(apartment_id=apartment.pk,
-                                               period=period)}
+        entered = metering.get_readings(apartment.pk, period)
         form = MeterReadingForm(meters=meters, serials=serials, initial=entered)
 
     return render(request, "billing/current_month.html",

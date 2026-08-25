@@ -3,9 +3,8 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth.models import User
 from django.db import IntegrityError
-from billing.models import (
-    Apartment, Tenant, MeterReading, MonthlyStatement,
-)
+from modules.metering.infrastructure.models import Meter, MeterReading
+from billing.models import Apartment, Tenant, MonthlyStatement
 
 pytestmark = pytest.mark.django_db
 
@@ -18,10 +17,10 @@ def test_apartment_defaults():
 def test_reading_unique_per_meter_period():
     a = Apartment.objects.create(label="кв. 1")
     MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1),
-                                meter="cold_water", value=Decimal("100"))
+                                resource="cold_water", value=Decimal("100"))
     with pytest.raises(IntegrityError):
         MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1),
-                                    meter="cold_water", value=Decimal("101"))
+                                    resource="cold_water", value=Decimal("101"))
 
 def test_statement_unique_per_period():
     a = Apartment.objects.create(label="кв. 2")
@@ -41,9 +40,9 @@ def test_meter_unique_per_apartment_and_kind(db):
     from decimal import Decimal
     from django.db import IntegrityError
     import pytest as _pytest
-    from billing.models import Apartment, Meter
+    from billing.models import Apartment
     a = Apartment.objects.create(label="кв")
-    Meter.objects.create(apartment_id=a.pk, kind="cold_water", serial_number="X-1",
+    Meter.objects.create(apartment_id=a.pk, resource="cold_water", serial_number="X-1",
                          initial_value=Decimal("100"))
     with _pytest.raises(IntegrityError):
-        Meter.objects.create(apartment_id=a.pk, kind="cold_water", initial_value=Decimal("0"))
+        Meter.objects.create(apartment_id=a.pk, resource="cold_water", initial_value=Decimal("0"))
