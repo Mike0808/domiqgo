@@ -5,23 +5,12 @@ from modules.properties import api as properties
 from modules.tariffs import api as tariffs
 
 from .calculation import ApartmentConfig, compute_statement
-from ..models import Apartment, MonthlyStatement
+from ..models import MonthlyStatement
 
-#: Что квартира обещает измерять, если верить её флагам. Пары «флаг → приборы»
-#: остались единственным местом, где флаги ещё что-то значат для учёта: они
-#: больше не решают, что начислять, а служат сверкой с реестром.
-def _promised_by_flags(apartment) -> list[str]:
-    obj = properties.get_property(apartment.pk)
-    promised = []
-    if obj.has_cold_water:
-        promised.append("cold_water")
-    if obj.has_hot_water:
-        promised.append("hot_water")
-    if apartment.electricity_meter_type == Apartment.SINGLE:
-        promised.append("electricity_single")
-    else:
-        promised.extend(["electricity_day", "electricity_night"])
-    return promised
+#: Электросчётчик ожидается у любой квартиры, а какой именно — однотарифный
+#: или пара «день/ночь» — знает реестр приборов, и только он
+#: ([ADR-0028](../../docs/architecture/adr/0028-electricity-zones-are-derived-from-the-registry.md)).
+ELECTRICITY = ("electricity_single", "electricity_day", "electricity_night")
 
 def metered_resources(apartment) -> list[str]:
     """Что начисляется по приборам — из реестра Metering, а не из флагов.
@@ -34,16 +23,30 @@ def metered_resources(apartment) -> list[str]:
     return [m.resource for m in metering.get_expected_meters(apartment.pk)]
 
 def missing_meters(apartment) -> list[str]:
-    """Услуги, которые квартира обещает флагами, но прибора для них нет.
+    """Чего не хватает в реестре приборов — названиями, для человека.
 
-    Расчёт из-за этого не останавливается: ответственность за состав приборов
-    несёт владелец. Но и молчать нельзя — счёт без горячей воды выглядит
-    законным и недоначисляет незаметно, ровно как нулевой норматив подогрева
-    до исправления дефекта №29. Поэтому владелец видит перечень в списке
-    квартир и в сообщении при пересчёте.
+    Расчёт из-за нехватки не останавливается: ответственность за состав
+    приборов несёт владелец. Но и молчать нельзя — счёт без горячей воды
+    выглядит законным и недоначисляет незаметно, ровно как нулевой норматив
+    подогрева до исправления дефекта №29. Поэтому владелец видит перечень в
+    списке квартир и в сообщении при пересчёте.
+
+    Названиями, а не кодами: по электроэнергии назвать код нечем. Какой
+    счётчик стоит — однотарифный или зонный — знает реестр, а раз в нём пусто,
+    не знает никто, и сказать можно только «электросчётчик не заведён»
+    ([ADR-0028](../../docs/architecture/adr/0028-electricity-zones-are-derived-from-the-registry.md)).
     """
+    obj = properties.get_property(apartment.pk)
     registered = set(metered_resources(apartment))
-    return [r for r in _promised_by_flags(apartment) if r not in registered]
+    names = metering.resources()
+    missing = []
+    if obj.has_cold_water and "cold_water" not in registered:
+        missing.append(names["cold_water"])
+    if obj.has_hot_water and "hot_water" not in registered:
+        missing.append(names["hot_water"])
+    if not registered & set(ELECTRICITY):
+        missing.append("Электроэнергия")
+    return missing
 
 def _consumption_for(apartment, period, resources) -> dict:
     """Расход по приборам квартиры за период.

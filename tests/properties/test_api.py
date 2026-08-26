@@ -168,12 +168,11 @@ def test_decommissioning_one_leaves_the_neighbour_in_service():
 
 
 def test_the_fields_of_other_modules_survive_a_command():
-    """В таблице лежат временные жильцы — арендная ставка, политика
-    округления, тип счётчика. Запись состояния эксплуатации не смеет их
-    затирать: домен о них не знает и восстановить бы не смог."""
+    """В таблице лежат временные жильцы — арендная ставка, интернет, политика
+    округления. Запись состояния эксплуатации не смеет их затирать: домен о
+    них не знает и восстановить бы не смог."""
     apartment = _apartment(rent=Decimal("20000"), internet=Decimal("700"),
-                           round_total=False,
-                           electricity_meter_type=Apartment.DUAL)
+                           round_total=False)
 
     api.decommission_property(apartment.pk, JULY)
 
@@ -181,7 +180,6 @@ def test_the_fields_of_other_modules_survive_a_command():
     assert stored.rent == Decimal("20000")
     assert stored.internet == Decimal("700")
     assert stored.round_total is False
-    assert stored.electricity_meter_type == Apartment.DUAL
 
 
 # -------------------------------------------------------------------- журнал

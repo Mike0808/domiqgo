@@ -199,7 +199,7 @@ def test_a_flag_without_a_registered_meter_bills_nothing_but_warns():
     invoice = generate_statement(apartment, PERIOD)
 
     assert [line["code"] for line in invoice.lines] == []
-    assert missing_meters(apartment) == ["cold_water", "electricity_single"]
+    assert missing_meters(apartment) == ["Холодная вода", "Электроэнергия"]
 
 
 # --------------------------------------------------------------------------

@@ -23,8 +23,8 @@ from .services.intake import confirm_payment, reject_payment, _revert_if_no_pend
 @admin.register(Apartment)
 class ApartmentAdmin(admin.ModelAdmin):
     list_display = ("label", "service_state", "meters_to_register",
-                    "electricity_meter_type", "rent", "internet")
-    list_filter = ("electricity_meter_type", "decommissioned_on")
+                    "rent", "internet")
+    list_filter = ("decommissioned_on",)
     search_fields = ("label",)
     actions = ["decommission_properties", "recommission_properties"]
 
@@ -84,10 +84,8 @@ class ApartmentAdmin(admin.ModelAdmin):
         missing = missing_meters(obj)
         if not missing:
             return "—"
-        names = metering.resources()
-        return format_html(
-            '<span style="color:#b32d2e">{}</span>',
-            ", ".join(names.get(code, code) for code in missing))
+        return format_html('<span style="color:#b32d2e">{}</span>',
+                           ", ".join(missing))
     # `MeterInline` убран на шаге C2a3: вложенная форма требует внешнего
     # ключа, а его больше нет. Приборы получили собственный раздел ниже и
     # уедут в Metering вместе с моделью на C2c.
@@ -239,11 +237,10 @@ def _warn_about_missing_meters(modeladmin, request, apartment):
     missing = missing_meters(apartment)
     if not missing:
         return
-    names = metering.resources()
     modeladmin.message_user(
         request,
         f"У квартиры «{apartment.label}» не заведены приборы: "
-        + ", ".join(names.get(code, code) for code in missing)
+        + ", ".join(missing)
         + ". Эти услуги в счёт не попали.",
         level=messages.WARNING)
 

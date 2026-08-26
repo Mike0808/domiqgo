@@ -86,6 +86,9 @@ def test_the_apartment_list_names_the_meters_to_register(admin_client):
 
     assert "Холодная вода" in page
     assert "Электроэнергия" in page
+    # Тип счётчика из карточки исчез: какой прибор стоит, знает реестр
+    # (шаг C3d, ADR-0028).
+    assert "Тип счётчика электроэнергии" not in page
 
 
 def test_the_apartment_list_stays_quiet_when_the_registry_is_complete(admin_client):

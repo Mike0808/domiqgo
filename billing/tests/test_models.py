@@ -10,7 +10,6 @@ pytestmark = pytest.mark.django_db
 
 def test_apartment_defaults():
     a = Apartment.objects.create(label="ул. Ленина 1, кв. 5")
-    assert a.electricity_meter_type == Apartment.SINGLE
     assert a.has_cold_water and a.has_hot_water and a.has_sewage
     assert a.rent == Decimal("0")
 

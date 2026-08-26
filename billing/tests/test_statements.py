@@ -38,7 +38,7 @@ def test_metered_resources_come_from_the_registry_not_the_flags():
     """Шаг C2e. Прежде этот тест назывался `test_meters_for_single_vs_dual` и
     проверял обратное: состав выводился из флагов квартиры и типа
     электросчётчика, а реестр приборов не спрашивали вовсе."""
-    a = Apartment.objects.create(label="кв", electricity_meter_type=Apartment.SINGLE)
+    a = Apartment.objects.create(label="кв")
 
     assert metered_resources(a) == []          # флаги обещают, реестр пуст
 
@@ -72,8 +72,7 @@ def test_generate_uses_previous_period_as_baseline():
     assert by["rent"]["quantity"] is None
 
 def test_generate_selects_tariff_effective_for_period():
-    a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False,
-                                 electricity_meter_type=Apartment.SINGLE)
+    a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
     publish_tariff_version(utility="cold_water", rate=Decimal("40.00"), effective_from=date(2025, 7, 1))
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2025, 7, 1))
@@ -165,20 +164,24 @@ def test_without_registered_meters_nothing_metered_is_billed():
 
     assert [line["code"] for line in stmt.lines] == []
     assert stmt.total == Decimal("0.00")
-    assert missing_meters(a) == ["cold_water", "electricity_single"]
+    assert missing_meters(a) == ["Холодная вода", "Электроэнергия"]
 
 
 # ------------------------------------------------- сверка флагов с реестром
 
-def test_missing_meters_lists_what_the_flags_promise_but_the_registry_lacks():
+def test_missing_meters_lists_what_the_registry_lacks():
     """Шаг C2e: расчёт не встаёт, но расхождение владельцу видно.
 
     Иначе счёт без горячей воды выглядел бы законным и недоначислял незаметно
     — ровно то, что делал нулевой норматив подогрева до исправления №29.
-    """
-    a = Apartment.objects.create(label="кв")   # ХВС, ГВС и однотарифный свет
 
-    assert missing_meters(a) == ["cold_water", "hot_water", "electricity_single"]
+    Названиями, а не кодами: по электроэнергии кода нет — какой счётчик стоит,
+    знает реестр, а раз в нём пусто, не знает никто (ADR-0028).
+    """
+    a = Apartment.objects.create(label="кв")   # ХВС и ГВС подведены
+
+    assert missing_meters(a) == ["Холодная вода", "Горячая вода",
+                                 "Электроэнергия"]
 
 
 def test_a_registered_meter_disappears_from_the_warning():
@@ -186,7 +189,7 @@ def test_a_registered_meter_disappears_from_the_warning():
     Meter.objects.create(apartment_id=a.pk, resource="cold_water",
                          initial_value=Decimal("0"))
 
-    assert missing_meters(a) == ["electricity_single"]
+    assert missing_meters(a) == ["Электроэнергия"]
 
 
 def test_nothing_is_missing_when_the_registry_covers_the_flags():
@@ -199,22 +202,28 @@ def test_nothing_is_missing_when_the_registry_covers_the_flags():
     assert missing_meters(a) == []
 
 
-def test_a_dual_meter_apartment_wants_both_zones():
+def test_any_electricity_meter_settles_the_question():
+    """Шаг C3d: карточка больше не утверждает, однотарифный счётчик или
+    зонный. Заведён `electricity_day` — значит прибор зонный, и второй зоной
+    распоряжается владелец, а не система ([ADR-0028]).
+
+    Прежде тест назывался `test_a_dual_meter_apartment_wants_both_zones` и
+    требовал обе зоны — потому что тип счётчика был записан в карточке
+    объекта вторым голосом.
+    """
     a = Apartment.objects.create(label="кв", has_cold_water=False,
-                                 has_hot_water=False,
-                                 electricity_meter_type=Apartment.DUAL)
+                                 has_hot_water=False)
     Meter.objects.create(apartment_id=a.pk, resource="electricity_day",
                          initial_value=Decimal("0"))
 
-    assert missing_meters(a) == ["electricity_night"]
+    assert missing_meters(a) == []
 
 
 def test_a_meter_outside_the_flags_is_not_a_shortage():
     """Лишний прибор — не нехватка: он просто начисляется. Сверка смотрит в
     одну сторону, потому что вторая перестала быть расхождением."""
     a = Apartment.objects.create(label="кв", has_cold_water=False,
-                                 has_hot_water=False,
-                                 electricity_meter_type=Apartment.SINGLE)
+                                 has_hot_water=False)
     Meter.objects.create(apartment_id=a.pk, resource="electricity_single",
                          initial_value=Decimal("0"))
     Meter.objects.create(apartment_id=a.pk, resource="hot_water",
@@ -268,4 +277,4 @@ def test_the_meter_reconciliation_asks_properties_too():
                return_value=only_hot_water):
         missing = missing_meters(a)
 
-    assert "hot_water" in missing
+    assert "Горячая вода" in missing

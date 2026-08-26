@@ -5,8 +5,7 @@
 
 **Временные жильцы.** В таблице лежат поля, которые Properties не принадлежат:
 `rent`, `internet`, `other_fixed` — условия договора и ждут Tenancy;
-`round_total` — политика оформления документа и ждёт Billing;
-`electricity_meter_type` — свойство прибора и уезжает в Metering шагом C3d.
+`round_total` — политика оформления документа и ждёт Billing.
 Вырезать их одним движением нельзя: у каждого свой владелец и свой шаг плана,
 а до тех пор на них опирается расчёт счёта.
 """
@@ -63,10 +62,6 @@ class ApartmentQuerySet(models.QuerySet):
 
 
 class Apartment(models.Model):
-    SINGLE = "single"
-    DUAL = "dual"
-    METER_CHOICES = [(SINGLE, "Однотарифный"), (DUAL, "День/Ночь")]
-
     label = models.CharField("Квартира", max_length=200)
     #: Дата вывода из эксплуатации; `None` — объект действует. Датой, а не
     #: флагом: владельцу важно, с какого числа объект перестал сдаваться, а
@@ -74,9 +69,6 @@ class Apartment(models.Model):
     decommissioned_on = models.DateField(
         "Выведен из эксплуатации", null=True, blank=True,
         help_text="Пусто — объект в эксплуатации.")
-    electricity_meter_type = models.CharField(
-        "Тип счётчика электроэнергии", max_length=10,
-        choices=METER_CHOICES, default=SINGLE)
     has_cold_water = models.BooleanField("Холодная вода", default=True)
     has_hot_water = models.BooleanField("Горячая вода", default=True)
     has_sewage = models.BooleanField("Водоотведение", default=True)
