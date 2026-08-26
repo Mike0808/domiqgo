@@ -221,3 +221,51 @@ def test_a_meter_outside_the_flags_is_not_a_shortage():
                          initial_value=Decimal("0"))
 
     assert missing_meters(a) == []
+
+
+# ------------------------------- конфигурацию объекта спрашивают у Properties
+
+def test_the_bill_takes_the_service_composition_from_properties():
+    """Проверяется не результат, а путь — и другого способа нет.
+
+    Прямое чтение `apartment.has_sewage` даёт тот же ответ: это одна и та же
+    строка одной и той же таблицы, и разойтись двум чтениям негде. Мутация
+    «читать поле напрямую» прошла зелёной, пока этот тест не появился.
+    Поэтому здесь подменяется сам публичный API модуля: если Billing к нему не
+    обратится, подмена не подействует.
+    """
+    from unittest.mock import patch
+    from modules.properties.domain import Apartment as PropertyView
+
+    a = Apartment.objects.create(label="кв", has_sewage=True,
+                                 gvs_heat_norm=Decimal("0.05229"))
+    _tariffs()
+    _meters(a)
+    _readings(a, date(2026, 7, 1), "110", "55", "1500")
+    without_sewage = PropertyView(
+        apartment_id=a.pk, label="кв", has_cold_water=True, has_hot_water=True,
+        has_sewage=False, gvs_heat_norm=Decimal("0.05229"))
+
+    with patch("billing.services.statements.properties.get_property",
+               return_value=without_sewage):
+        stmt = generate_statement(a, date(2026, 7, 1))
+
+    assert "sewage" not in {line["code"] for line in stmt.lines}
+
+
+def test_the_meter_reconciliation_asks_properties_too():
+    """`missing_meters` сверяет реестр приборов с составом услуг объекта —
+    и состав тоже берёт у модуля, а не из строки под рукой."""
+    from unittest.mock import patch
+    from modules.properties.domain import Apartment as PropertyView
+
+    a = Apartment.objects.create(label="кв", has_hot_water=False)
+    only_hot_water = PropertyView(
+        apartment_id=a.pk, label="кв", has_cold_water=False, has_hot_water=True,
+        has_sewage=False, gvs_heat_norm=Decimal("0.05229"))
+
+    with patch("billing.services.statements.properties.get_property",
+               return_value=only_hot_water):
+        missing = missing_meters(a)
+
+    assert "hot_water" in missing

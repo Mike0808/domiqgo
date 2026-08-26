@@ -17,6 +17,8 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import ProtectedError
 
+from ..domain.property import HeatNormMissing, ensure_heat_norm_is_set
+
 
 class PropertyNotDeletable(ProtectedError):
     """Объект недвижимости не удаляют — его выводят из эксплуатации.
@@ -112,27 +114,20 @@ class Apartment(models.Model):
         return self.decommissioned_on is None
 
     def clean(self):
-        """Норматив подогрева обязателен при подведённой горячей воде.
+        """Перевод доменного отказа на язык формы.
 
-        Дефект №29 гап-анализа: `has_hot_water` по умолчанию `True`, а
-        `gvs_heat_norm` — `0`, поэтому только что заведённая квартира начисляла
-        за подогрев `0 × ставка = 0` — строка в счёте есть, сумма нулевая,
-        ошибки нет. Инвариант принадлежит Properties
-        (ADR-0007). Здесь он остался после переезда C3b; в домен модуля
-        переезжает шагом C3c.
+        Правило живёт в `domain/property.py` и проверяется без базы; здесь
+        только привязка сообщения к полю, чтобы владелец увидел его под
+        нужной строкой формы.
 
-        Проверка держит форму в админке; расчёт прикрыт отдельно
-        (`MissingHeatNormError`), потому что `Model.clean` не вызывается при
-        `objects.create` и не защитил бы уже заведённые квартиры.
+        Расчёт прикрыт отдельно (`MissingHeatNormError` в Billing), потому что
+        `Model.clean` не вызывается при `objects.create` и не защищает уже
+        заведённые объекты.
         """
-        # `Decimal("0")` ложно, `None` (поле оставили пустым) — тоже.
-        if self.has_hot_water and (self.gvs_heat_norm or 0) <= 0:
-            raise ValidationError({"gvs_heat_norm": (
-                "При подведённой горячей воде норматив подогрева обязателен и "
-                "больше нуля. Возьмите его из квитанции управляющей компании "
-                "(обычно 0,05–0,065 Гкал/м³). Пока он не задан, подогрев в "
-                "счёт не попадает, и вы недополучаете эти деньги."
-            )})
+        try:
+            ensure_heat_norm_is_set(self.has_hot_water, self.gvs_heat_norm)
+        except HeatNormMissing as refusal:
+            raise ValidationError({"gvs_heat_norm": str(refusal)})
 
     def __str__(self):
         return self.label

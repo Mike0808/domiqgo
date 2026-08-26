@@ -1,6 +1,7 @@
 from datetime import date
 
 from modules.metering import api as metering
+from modules.properties import api as properties
 from modules.tariffs import api as tariffs
 
 from .calculation import ApartmentConfig, compute_statement
@@ -10,10 +11,11 @@ from ..models import Apartment, MonthlyStatement
 #: остались единственным местом, где флаги ещё что-то значат для учёта: они
 #: больше не решают, что начислять, а служат сверкой с реестром.
 def _promised_by_flags(apartment) -> list[str]:
+    obj = properties.get_property(apartment.pk)
     promised = []
-    if apartment.has_cold_water:
+    if obj.has_cold_water:
         promised.append("cold_water")
-    if apartment.has_hot_water:
+    if obj.has_hot_water:
         promised.append("hot_water")
     if apartment.electricity_meter_type == Apartment.SINGLE:
         promised.append("electricity_single")
@@ -74,10 +76,16 @@ def line_to_dict(line) -> dict:
     }
 
 def generate_statement(apartment, period: date) -> MonthlyStatement:
+    # Состав подведённых услуг и норматив подогрева спрашиваются у Properties:
+    # это конфигурация объекта, и владеет ею модуль (шаг C3c). Ставка аренды,
+    # интернет, прочее и политика округления читаются из той же строки
+    # напрямую — они лежат в таблице объектов как временные жильцы и ждут
+    # Tenancy и Billing.
+    obj = properties.get_property(apartment.pk)
     config = ApartmentConfig(
-        has_sewage=apartment.has_sewage,
-        rent=apartment.rent, internet=apartment.internet, other_fixed=apartment.other_fixed,
-        gvs_heat_norm=apartment.gvs_heat_norm, round_total=apartment.round_total,
+        has_sewage=obj.has_sewage, gvs_heat_norm=obj.gvs_heat_norm,
+        rent=apartment.rent, internet=apartment.internet,
+        other_fixed=apartment.other_fixed, round_total=apartment.round_total,
     )
     consumption = _consumption_for(apartment, period, metered_resources(apartment))
     tariffs = _tariffs_for(period)

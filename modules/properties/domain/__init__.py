@@ -2,11 +2,11 @@
 
 Не импортирует django, requests, allauth и прочие фреймворки — только stdlib.
 
-Пока здесь состояние эксплуатации объекта. Инвариант «при подведённой ГВС
-норматив обязателен и больше нуля» действует с исправления дефекта №29, но
-живёт в `Apartment.clean` устаревающего слоя; шаг **C3c** переносит его сюда.
+Здесь состояние эксплуатации объекта и инвариант «при подведённой ГВС норматив
+обязателен и больше нуля» — он приехал шагом **C3c** из `Apartment.clean`, где
+жил с исправления дефекта №29.
 """
 
-from .property import Apartment
+from .property import Apartment, HeatNormMissing, ensure_heat_norm_is_set
 
-__all__ = ["Apartment"]
+__all__ = ["Apartment", "HeatNormMissing", "ensure_heat_norm_is_set"]
