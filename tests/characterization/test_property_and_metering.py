@@ -3,7 +3,7 @@
 | Пункт | Что зафиксировано                                       | Кто перепишет |
 |-------|---------------------------------------------------------|---------------|
 | №29   | ~~квартира с ГВС и нулевым нормативом начисляет ноль~~ исправлен | — (C3) |
-| №32   | состав приборов выводится из флагов, а не из реестра     | C2            |
+| №32   | ~~состав приборов выводится из флагов, а не из реестра~~ исправлен | — (C2e)  |
 | №9    | ~~удаление квартиры уносит показания и счета~~ исправлен | — (C3)        |
 
 №9 не помечен ⚠ — он проявился бы не у пользователя, а в данных. Тест здесь
@@ -12,6 +12,14 @@
 на приборах, показаниях и счетах переведён с `CASCADE` на `PROTECT`, тесты
 переписаны здесь же. C3 вернётся к нему ещё раз — заменить удаление объекта
 выводом из эксплуатации.
+
+№32 закрыт шагом **C2e**: состав начисляемого по приборам задаёт реестр
+Metering. Оба расхождения двух источников исчезли — заведённый прибор
+начисляется, а обещанный флагом, но не заведённый, просто не начисляется.
+Расчёт при этом не останавливается: ответственность за состав приборов несёт
+владелец. Чтобы это не стало тихим недоначислением, ему видно, чего не
+хватает, — `missing_meters`, столбец в списке квартир и предупреждение при
+пересчёте.
 
 №29 исправлен там же и тогда же ([ADR-0026](../../docs/architecture/adr/0026-defect-fixes-allowed-in-legacy-app.md)):
 норматив подогрева обязателен при подведённой ГВС, расчёт отказывается вместо
@@ -30,7 +38,7 @@ from modules.metering.infrastructure.models import Meter, MeterReading
 from billing.models import Apartment, MonthlyStatement, Tenant
 from billing.services.calculation import MissingHeatNormError
 from billing.services.statements import (
-    MissingBaselineError, generate_statement, meters_for,
+    generate_statement, metered_resources, missing_meters,
 )
 from modules.tariffs.api import publish_tariff_version
 
@@ -128,36 +136,52 @@ def test_the_same_apartment_with_a_norm_bills_the_heating():
 # №32 — два источника истины о составе приборов. Переписывает шаг C2.
 # --------------------------------------------------------------------------
 
-def test_registered_meter_outside_the_flags_is_never_billed():
-    """Прибор заведён в реестре, но флага нет — в счёт он не попадает.
+def test_a_registered_meter_is_billed_even_without_the_flag():
+    """Прибор заведён в реестре — он и начисляется, что бы ни говорили флаги.
 
-    После C2 состав определяет реестр приборов, а флаги `has_*` исчезают.
+    Прежде тест назывался `test_registered_meter_outside_the_flags_is_never_billed`
+    и утверждал обратное: заведённый счётчик горячей воды в счёт не попадал,
+    потому что состав выводился из `has_hot_water`. Переписан шагом C2e вместе
+    с самим правилом — так требует контракт каталога.
     """
-    apartment = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
+    apartment = Apartment.objects.create(label="кв", has_hot_water=False,
+                                         has_sewage=False,
+                                         gvs_heat_norm=Decimal("0.05229"))
     Meter.objects.create(apartment_id=apartment.pk, resource="cold_water", initial_value=Decimal("100"))
     Meter.objects.create(apartment_id=apartment.pk, resource="electricity_single",
                          initial_value=Decimal("1400"))
-    Meter.objects.create(apartment_id=apartment.pk, resource="hot_water",   # заведён и забыт
+    Meter.objects.create(apartment_id=apartment.pk, resource="hot_water",   # флага нет, прибор есть
                          serial_number="HW-1", initial_value=Decimal("50"))
-    _tariff("cold_water", "48.15")
-    _tariff("electricity_single", "4.87")
-    MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
-                                resource="cold_water", value=Decimal("110"))
-    MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
-                                resource="electricity_single", value=Decimal("1500"))
+    for code, rate in (("cold_water", "48.15"), ("electricity_single", "4.87"),
+                       ("hot_water_cold_component", "25.86"),
+                       ("hot_water_heat_component", "2389.72")):
+        _tariff(code, rate)
+    for resource, value in (("cold_water", "110"), ("electricity_single", "1500"),
+                            ("hot_water", "55")):
+        MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
+                                    resource=resource, value=Decimal(value))
 
-    assert meters_for(apartment) == ["cold_water", "electricity_single"]
+    assert metered_resources(apartment) == [
+        "cold_water", "electricity_single", "hot_water"]
 
     invoice = generate_statement(apartment, PERIOD)
-    assert {line["code"] for line in invoice.lines} == {"cold_water", "electricity_single"}
+    assert {line["code"] for line in invoice.lines} == {
+        "cold_water", "electricity_single",
+        "hot_water_cold_component", "hot_water_heat_component"}
 
 
-def test_flag_without_registered_meter_stops_the_calculation():
-    """Обратное расхождение тех же двух источников — и расчёт встаёт.
+def test_a_flag_without_a_registered_meter_bills_nothing_but_warns():
+    """Обратное расхождение: квартира обещает флагами, реестр пуст.
 
-    `MissingBaselineError` существует именно потому, что состав берётся из
-    флагов, а базы отсчёта — из реестра. После C2 источник один, и причина
-    исключения исчезает вместе с расхождением.
+    Прежде тест назывался `test_flag_without_registered_meter_stops_the_calculation`
+    и утверждал, что расчёт встаёт с `MissingBaselineError`. Исключение
+    существовало ровно потому, что состав брался из флагов, а базы отсчёта — из
+    реестра; с одним источником причине неоткуда взяться.
+
+    Расчёт теперь идёт: ответственность за состав приборов несёт владелец.
+    Чтобы это не стало тихим недоначислением — тем же, что делал нулевой
+    норматив подогрева до исправления №29, — недостающие приборы перечисляются
+    владельцу.
     """
     apartment = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
     _tariff("cold_water", "48.15")
@@ -167,8 +191,10 @@ def test_flag_without_registered_meter_stops_the_calculation():
     MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
                                 resource="electricity_single", value=Decimal("1500"))
 
-    with pytest.raises(MissingBaselineError):
-        generate_statement(apartment, PERIOD)
+    invoice = generate_statement(apartment, PERIOD)
+
+    assert [line["code"] for line in invoice.lines] == []
+    assert missing_meters(apartment) == ["cold_water", "electricity_single"]
 
 
 # --------------------------------------------------------------------------

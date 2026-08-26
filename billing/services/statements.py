@@ -3,37 +3,55 @@ from datetime import date
 from modules.metering import api as metering
 from modules.tariffs import api as tariffs
 
-from .calculation import ApartmentConfig, MeterType, compute_statement
+from .calculation import ApartmentConfig, compute_statement
 from ..models import Apartment, MonthlyStatement
 
-class MissingBaselineError(Exception):
-    """No previous reading and no contract-fixed initial value for a meter."""
-
-def meters_for(apartment) -> list[str]:
-    meters = []
+#: Что квартира обещает измерять, если верить её флагам. Пары «флаг → приборы»
+#: остались единственным местом, где флаги ещё что-то значат для учёта: они
+#: больше не решают, что начислять, а служат сверкой с реестром.
+def _promised_by_flags(apartment) -> list[str]:
+    promised = []
     if apartment.has_cold_water:
-        meters.append("cold_water")
+        promised.append("cold_water")
     if apartment.has_hot_water:
-        meters.append("hot_water")
+        promised.append("hot_water")
     if apartment.electricity_meter_type == Apartment.SINGLE:
-        meters.append("electricity_single")
+        promised.append("electricity_single")
     else:
-        meters.extend(["electricity_day", "electricity_night"])
-    return meters
+        promised.extend(["electricity_day", "electricity_night"])
+    return promised
 
-def _consumption_for(apartment, period, meters) -> dict:
+def metered_resources(apartment) -> list[str]:
+    """Что начисляется по приборам — из реестра Metering, а не из флагов.
+
+    Шаг C2e, нарушение №32 гап-анализа: до него состав выводился из флагов
+    `has_*`, а номера и базы лежали в реестре, и два источника расходились в
+    обе стороны. Теперь источник один — тот, где есть заводской номер и
+    начальное показание, то есть тот, по которому вообще можно посчитать.
+    """
+    return [m.resource for m in metering.get_expected_meters(apartment.pk)]
+
+def missing_meters(apartment) -> list[str]:
+    """Услуги, которые квартира обещает флагами, но прибора для них нет.
+
+    Расчёт из-за этого не останавливается: ответственность за состав приборов
+    несёт владелец. Но и молчать нельзя — счёт без горячей воды выглядит
+    законным и недоначисляет незаметно, ровно как нулевой норматив подогрева
+    до исправления дефекта №29. Поэтому владелец видит перечень в списке
+    квартир и в сообщении при пересчёте.
+    """
+    registered = set(metered_resources(apartment))
+    return [r for r in _promised_by_flags(apartment) if r not in registered]
+
+def _consumption_for(apartment, period, resources) -> dict:
     """Расход по приборам квартиры за период.
 
-    Правило базы отсчёта уехало в Metering шагом C2d — вместе с самим
-    прибором, которому оно и принадлежит. Здесь остался перевод отказа модуля
-    на язык Billing: «нет базы отсчёта» модуль называет фактом, а ошибкой
-    расчёта его по-прежнему назначает счёт.
+    Правило базы отсчёта уехало в Metering шагом C2d — вместе с прибором,
+    которому оно принадлежит. Перевода отказа здесь больше нет: с шага C2e
+    состав берётся из реестра, а зарегистрированный прибор всегда имеет
+    начальное показание, поэтому базе отсчёта неоткуда пропасть.
     """
-    try:
-        used = metering.get_consumption(apartment.pk, period, meters)
-    except metering.BaselineMissing as gap:
-        raise MissingBaselineError(
-            "Нет начальных показаний для: " + ", ".join(gap.resources))
+    used = metering.get_consumption(apartment.pk, period, resources)
     return {resource: value.used for resource, value in used.items()}
 
 def _tariffs_for(period) -> dict:
@@ -57,14 +75,11 @@ def line_to_dict(line) -> dict:
 
 def generate_statement(apartment, period: date) -> MonthlyStatement:
     config = ApartmentConfig(
-        electricity_meter_type=MeterType(apartment.electricity_meter_type),
-        has_cold_water=apartment.has_cold_water,
-        has_hot_water=apartment.has_hot_water,
         has_sewage=apartment.has_sewage,
         rent=apartment.rent, internet=apartment.internet, other_fixed=apartment.other_fixed,
         gvs_heat_norm=apartment.gvs_heat_norm, round_total=apartment.round_total,
     )
-    consumption = _consumption_for(apartment, period, meters_for(apartment))
+    consumption = _consumption_for(apartment, period, metered_resources(apartment))
     tariffs = _tariffs_for(period)
     lines, total = compute_statement(config, consumption, tariffs)
     stmt, _created = MonthlyStatement.objects.update_or_create(

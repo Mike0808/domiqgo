@@ -19,6 +19,12 @@ def tenant_setup():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
+    # Приборы в реестре: с шага C2e они задают и состав счёта, и состав формы
+    # ввода. Раньше эти две строки были не нужны — состав выводился из флагов.
+    Meter.objects.create(apartment_id=a.pk, resource="cold_water",
+                         initial_value=Decimal("0"))
+    Meter.objects.create(apartment_id=a.pk, resource="electricity_single",
+                         initial_value=Decimal("0"))
     # baseline (previous month) readings set by landlord
     prev = _period_first_of_this_month().replace(day=1)
     baseline_period = date(prev.year - 1, 12, 1) if prev.month == 1 else date(prev.year, prev.month - 1, 1)
@@ -204,16 +210,33 @@ def test_missing_heat_norm_shows_message_not_a_bill_without_heating(db):
     assert "Норматив подогрева" in resp.content.decode()
     assert not MonthlyStatement.objects.filter(apartment=a).exists()
 
-def test_missing_baseline_shows_message_not_bill_from_zero(db):
+def test_a_tenant_without_registered_meters_has_nothing_to_submit(db):
+    """Шаг C2e: форма ввода строится по заведённым приборам.
+
+    Прежде тест назывался `test_missing_baseline_shows_message_not_bill_from_zero`
+    и проверял, что расчёт останавливается с «Начальные показания не заданы».
+    Причина того сообщения — расхождение двух источников состава, и оно ушло
+    вместе с расхождением.
+
+    Жилец теперь видит пустую форму: спрашивать показание прибора, которого
+    нет в реестре, бессмысленно. Что приборы не заведены, узнаёт владелец — в
+    списке квартир и при пересчёте, а не жилец в момент сдачи.
+    """
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2020, 1, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
-    # no Meter rows, no prior readings
+    # ни одного прибора в реестре
     u = User.objects.create_user("orphan", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a, full_name="Без базы")
+    Tenant.objects.create(user=u, apartment=a, full_name="Без приборов")
     c = Client()
     assert c.login(username="orphan", password="pass12345")
-    resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
-    assert resp.status_code == 200  # friendly re-render, not a bill from zero
-    assert "Начальные показания не заданы" in resp.content.decode()
-    assert not MonthlyStatement.objects.filter(apartment=a).exists()
+
+    page = c.get("/").content.decode()
+    assert 'name="cold_water"' not in page
+    assert 'name="electricity_single"' not in page
+
+    c.post("/", {"cold_water": "110", "electricity_single": "1500"})
+
+    assert not MeterReading.objects.filter(apartment_id=a.pk).exists()
+    stmt = MonthlyStatement.objects.get(apartment=a)
+    assert [line["code"] for line in stmt.lines] == []

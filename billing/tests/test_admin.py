@@ -71,3 +71,43 @@ def test_admin_saving_reading_recalculates_statement(admin_client):
     assert resp.status_code == 200
     stmt = MonthlyStatement.objects.get(apartment=a, period=date(2026, 7, 1))
     assert stmt.total == Decimal("968.50")  # recalculated on save; below 10 000 — not rounded
+
+
+# ------------------------------- предупреждение о незаведённых приборах (C2e)
+
+def test_the_apartment_list_names_the_meters_to_register(admin_client):
+    """Счёт чаще всего порождает жилец, сдавая показания, и сообщения того
+    пересчёта владелец не увидит никогда. Поэтому нехватка видна в списке."""
+    Apartment.objects.create(label="кв. 10", has_hot_water=False)
+
+    page = admin_client.get("/admin/billing/apartment/").content.decode()
+
+    assert "Холодная вода" in page
+    assert "Электроэнергия" in page
+
+
+def test_the_apartment_list_stays_quiet_when_the_registry_is_complete(admin_client):
+    a = Apartment.objects.create(label="кв. 10", has_hot_water=False)
+    Meter.objects.create(apartment_id=a.pk, resource="cold_water",
+                         initial_value=Decimal("0"))
+    Meter.objects.create(apartment_id=a.pk, resource="electricity_single",
+                         initial_value=Decimal("0"))
+
+    page = admin_client.get("/admin/billing/apartment/").content.decode()
+
+    assert "Холодная вода" not in page
+
+
+def test_recalculating_warns_about_meters_that_are_not_registered(admin_client):
+    a = Apartment.objects.create(label="кв. 10", has_hot_water=False,
+                                 has_sewage=False)
+    stmt = MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1))
+
+    resp = admin_client.post("/admin/billing/monthlystatement/", {
+        "action": "regenerate_statements",
+        "_selected_action": [str(stmt.pk)],
+    }, follow=True)
+
+    page = resp.content.decode()
+    assert "не заведены приборы" in page
+    assert "в счёт не попали" in page

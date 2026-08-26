@@ -5,7 +5,7 @@ from modules.metering.infrastructure.models import Meter, MeterReading
 from billing.models import Apartment, MonthlyStatement
 from modules.tariffs.api import publish_tariff_version
 from billing.services.statements import (
-    MissingBaselineError, generate_statement, meters_for,
+    generate_statement, metered_resources, missing_meters,
 )
 
 pytestmark = pytest.mark.django_db
@@ -17,21 +17,45 @@ def _tariffs(effective=date(2026, 7, 1)):
     for code, rate in data.items():
         publish_tariff_version(utility=code, rate=Decimal(rate), effective_from=effective)
 
+def _meters(apt, cold="0", hot="0", elec="0"):
+    """Реестр приборов квартиры.
+
+    С шага C2e без него не начисляется ничто: состав задаёт реестр, а не
+    флаги. Раньше эти строки в тестах были не нужны — база отсчёта бралась из
+    показаний прошлого периода, а список приборов выводился из карточки.
+    """
+    for resource, initial in (("cold_water", cold), ("hot_water", hot),
+                              ("electricity_single", elec)):
+        Meter.objects.create(apartment_id=apt.pk, resource=resource,
+                             initial_value=Decimal(initial))
+
 def _readings(apt, period, cold, hot, elec):
     MeterReading.objects.create(apartment_id=apt.pk, period=period, resource="cold_water", value=Decimal(cold))
     MeterReading.objects.create(apartment_id=apt.pk, period=period, resource="hot_water", value=Decimal(hot))
     MeterReading.objects.create(apartment_id=apt.pk, period=period, resource="electricity_single", value=Decimal(elec))
 
-def test_meters_for_single_vs_dual():
+def test_metered_resources_come_from_the_registry_not_the_flags():
+    """Шаг C2e. Прежде этот тест назывался `test_meters_for_single_vs_dual` и
+    проверял обратное: состав выводился из флагов квартиры и типа
+    электросчётчика, а реестр приборов не спрашивали вовсе."""
     a = Apartment.objects.create(label="кв", electricity_meter_type=Apartment.SINGLE)
-    assert meters_for(a) == ["cold_water", "hot_water", "electricity_single"]
-    a.electricity_meter_type = Apartment.DUAL
-    assert meters_for(a) == ["cold_water", "hot_water", "electricity_day", "electricity_night"]
+
+    assert metered_resources(a) == []          # флаги обещают, реестр пуст
+
+    Meter.objects.create(apartment_id=a.pk, resource="electricity_day",
+                         initial_value=Decimal("0"))
+    Meter.objects.create(apartment_id=a.pk, resource="electricity_night",
+                         initial_value=Decimal("0"))
+
+    # Тип счётчика в карточке — «однотарифный», но заведены два прибора, и
+    # начисляться будут они: реестр знает, что стоит в квартире, карточка — нет.
+    assert metered_resources(a) == ["electricity_day", "electricity_night"]
 
 def test_generate_uses_previous_period_as_baseline():
     a = Apartment.objects.create(label="кв", rent=Decimal("20000"), internet=Decimal("700"),
                                  gvs_heat_norm=Decimal("0.05229"))
     _tariffs()
+    _meters(a)
     _readings(a, date(2026, 6, 1), "100", "50", "1400")
     _readings(a, date(2026, 7, 1), "110", "55", "1500")
 
@@ -118,14 +142,82 @@ def test_baseline_falls_back_per_meter():
     # cold: (110-100)*48.15 = 481.50; elec: (1500-1450)*4.87 = 243.50 — not rounded
     assert stmt.total == Decimal("725.00")
 
-def test_missing_baseline_raises_instead_of_billing_from_zero():
+def test_without_registered_meters_nothing_metered_is_billed():
+    """Шаг C2e: состав задаёт реестр приборов.
+
+    До него этот случай останавливал расчёт (`MissingBaselineError`): состав
+    брался из флагов, а базы отсчёта — из реестра, и они расходились. Теперь
+    источник один, и расхождению неоткуда взяться: нет прибора — нечего
+    начислять по счётчику.
+
+    Ответственность за состав приборов несёт владелец, поэтому расчёт не
+    встаёт. Чтобы это не превратилось в тихое недоначисление, ему видно, чего
+    не хватает, — см. `missing_meters` и столбец в списке квартир.
+    """
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
-    # no Meter rows, no prior readings
+    # ни одного прибора в реестре — только показания, взявшиеся ниоткуда
     MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), resource="cold_water", value=Decimal("110"))
     MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), resource="electricity_single", value=Decimal("1500"))
 
-    with pytest.raises(MissingBaselineError):
-        generate_statement(a, date(2026, 7, 1))
-    assert not MonthlyStatement.objects.filter(apartment=a).exists()
+    stmt = generate_statement(a, date(2026, 7, 1))
+
+    assert [line["code"] for line in stmt.lines] == []
+    assert stmt.total == Decimal("0.00")
+    assert missing_meters(a) == ["cold_water", "electricity_single"]
+
+
+# ------------------------------------------------- сверка флагов с реестром
+
+def test_missing_meters_lists_what_the_flags_promise_but_the_registry_lacks():
+    """Шаг C2e: расчёт не встаёт, но расхождение владельцу видно.
+
+    Иначе счёт без горячей воды выглядел бы законным и недоначислял незаметно
+    — ровно то, что делал нулевой норматив подогрева до исправления №29.
+    """
+    a = Apartment.objects.create(label="кв")   # ХВС, ГВС и однотарифный свет
+
+    assert missing_meters(a) == ["cold_water", "hot_water", "electricity_single"]
+
+
+def test_a_registered_meter_disappears_from_the_warning():
+    a = Apartment.objects.create(label="кв", has_hot_water=False)
+    Meter.objects.create(apartment_id=a.pk, resource="cold_water",
+                         initial_value=Decimal("0"))
+
+    assert missing_meters(a) == ["electricity_single"]
+
+
+def test_nothing_is_missing_when_the_registry_covers_the_flags():
+    a = Apartment.objects.create(label="кв", has_hot_water=False)
+    Meter.objects.create(apartment_id=a.pk, resource="cold_water",
+                         initial_value=Decimal("0"))
+    Meter.objects.create(apartment_id=a.pk, resource="electricity_single",
+                         initial_value=Decimal("0"))
+
+    assert missing_meters(a) == []
+
+
+def test_a_dual_meter_apartment_wants_both_zones():
+    a = Apartment.objects.create(label="кв", has_cold_water=False,
+                                 has_hot_water=False,
+                                 electricity_meter_type=Apartment.DUAL)
+    Meter.objects.create(apartment_id=a.pk, resource="electricity_day",
+                         initial_value=Decimal("0"))
+
+    assert missing_meters(a) == ["electricity_night"]
+
+
+def test_a_meter_outside_the_flags_is_not_a_shortage():
+    """Лишний прибор — не нехватка: он просто начисляется. Сверка смотрит в
+    одну сторону, потому что вторая перестала быть расхождением."""
+    a = Apartment.objects.create(label="кв", has_cold_water=False,
+                                 has_hot_water=False,
+                                 electricity_meter_type=Apartment.SINGLE)
+    Meter.objects.create(apartment_id=a.pk, resource="electricity_single",
+                         initial_value=Decimal("0"))
+    Meter.objects.create(apartment_id=a.pk, resource="hot_water",
+                         initial_value=Decimal("0"))
+
+    assert missing_meters(a) == []

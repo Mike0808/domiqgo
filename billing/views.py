@@ -12,7 +12,7 @@ from .consent import PRIVACY_POLICY_VERSION
 from .forms import MeterReadingForm, ConsentForm
 from .models import Document, MonthlyStatement, Tenant
 from .services.calculation import MissingHeatNormError, MissingTariffError
-from .services.statements import MissingBaselineError, meters_for, generate_statement
+from .services.statements import metered_resources, generate_statement
 
 def _current_period():
     return timezone.localdate().replace(day=1)
@@ -34,7 +34,9 @@ def current_month(request):
     if tenant is None:
         return _no_tenant_response(request)
     apartment = tenant.apartment
-    meters = meters_for(apartment)
+    # Форма ввода строится по заведённым приборам: спрашивать у жильца
+    # показание прибора, которого нет, бессмысленно (шаг C2e).
+    meters = metered_resources(apartment)
     serials = {m.resource: m.serial_number
                for m in metering.get_expected_meters(apartment.pk)}
     period = _current_period()
@@ -69,12 +71,6 @@ def current_month(request):
                     request,
                     "Норматив подогрева горячей воды не задан. "
                     "Обратитесь к арендодателю.")
-                return render(request, "billing/current_month.html",
-                              {"form": form, "statement": None, "period": period,
-                               "locked": False})
-            except MissingBaselineError:
-                messages.error(
-                    request, "Начальные показания не заданы. Обратитесь к арендодателю.")
                 return render(request, "billing/current_month.html",
                               {"form": form, "statement": None, "period": period,
                                "locked": False})

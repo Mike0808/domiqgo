@@ -8,18 +8,39 @@ from django.contrib import admin
 # когда Billing начнёт слушать событие.
 from django.contrib import messages
 from django.utils.html import format_html
+from modules.metering import api as metering
 from modules.metering.infrastructure.models import Meter, MeterReading
 from .models import (
     Apartment, Tenant, MonthlyStatement, Document, Payment,
 )
-from .services.statements import generate_statement
+from .services.statements import generate_statement, missing_meters
 from .services.intake import confirm_payment, reject_payment, _revert_if_no_pending
 
 @admin.register(Apartment)
 class ApartmentAdmin(admin.ModelAdmin):
-    list_display = ("label", "electricity_meter_type", "rent", "internet")
+    list_display = ("label", "meters_to_register", "electricity_meter_type",
+                    "rent", "internet")
     list_filter = ("electricity_meter_type",)
     search_fields = ("label",)
+
+    @admin.display(description="Не заведены приборы")
+    def meters_to_register(self, obj):
+        """Услуги, обещанные флагами квартиры, но без прибора в реестре.
+
+        С шага C2e состав начисляемого задаёт реестр, и расчёт из-за
+        незаведённого прибора не останавливается — ответственность за состав
+        несёт владелец. Но счёт без горячей воды выглядит законным и
+        недоначисляет незаметно, поэтому расхождение видно здесь, а не только
+        в момент пересчёта: счёт чаще всего порождает жилец, сдавая показания,
+        и сообщения того пересчёта владелец не увидит никогда.
+        """
+        missing = missing_meters(obj)
+        if not missing:
+            return "—"
+        names = metering.resources()
+        return format_html(
+            '<span style="color:#b32d2e">{}</span>',
+            ", ".join(names.get(code, code) for code in missing))
     # `MeterInline` убран на шаге C2a3: вложенная форма требует внешнего
     # ключа, а его больше нет. Приборы получили собственный раздел ниже и
     # уедут в Metering вместе с моделью на C2c.
@@ -73,11 +94,31 @@ class MeterReadingAdmin(admin.ModelAdmin):
             apartment = Apartment.objects.get(pk=obj.apartment_id)
             generate_statement(apartment, obj.period)
             self.message_user(request, "Начисление за период пересчитано.")
+            _warn_about_missing_meters(self, request, apartment)
         except Exception as exc:
             self.message_user(
                 request,
                 f"Показание сохранено, но начисление не пересчитано: {exc}",
                 level=messages.WARNING)
+
+def _warn_about_missing_meters(modeladmin, request, apartment):
+    """Сказать владельцу, каких приборов не хватает, — при каждом пересчёте.
+
+    Дублирует столбец в списке квартир намеренно: в списке предупреждение
+    видно всегда, здесь — в тот момент, когда владелец смотрит на счёт и может
+    сверить сумму с квитанцией.
+    """
+    missing = missing_meters(apartment)
+    if not missing:
+        return
+    names = metering.resources()
+    modeladmin.message_user(
+        request,
+        f"У квартиры «{apartment.label}» не заведены приборы: "
+        + ", ".join(names.get(code, code) for code in missing)
+        + ". Эти услуги в счёт не попали.",
+        level=messages.WARNING)
+
 
 @admin.action(description="Пересчитать начисления")
 def regenerate_statements(modeladmin, request, queryset):
@@ -86,6 +127,7 @@ def regenerate_statements(modeladmin, request, queryset):
         try:
             generate_statement(stmt.apartment, stmt.period)
             ok += 1
+            _warn_about_missing_meters(modeladmin, request, stmt.apartment)
         except Exception as exc:  # report per-statement failure, don't abort the batch
             modeladmin.message_user(
                 request,

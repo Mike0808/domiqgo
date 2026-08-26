@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
-from enum import Enum
 
 CENT = Decimal("0.01")
 GCAL = Decimal("0.00001")  # heating quantities are shown to 5 decimal places
@@ -13,9 +12,9 @@ ROUND_THRESHOLD = Decimal("10000")
 def _money(value: Decimal) -> Decimal:
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
-class MeterType(str, Enum):
-    SINGLE = "single"
-    DUAL = "dual"
+# `MeterType` убран на шаге C2e вместе с полем `electricity_meter_type` в
+# `ApartmentConfig`: число тарифных зон — свойство прибора, и определяется оно
+# теперь тем, какие приборы заведены в реестре (ADR-0006).
 
 class MissingTariffError(Exception):
     """Raised when no tariff is available for a required utility."""
@@ -32,9 +31,11 @@ class MissingHeatNormError(Exception):
 
 @dataclass(frozen=True)
 class ApartmentConfig:
-    electricity_meter_type: MeterType
-    has_cold_water: bool
-    has_hot_water: bool
+    # Флагов «подведена холодная/горячая вода» и типа электросчётчика здесь
+    # больше нет: с шага C2e состав начисляемого по приборам задаёт реестр
+    # Metering, а не карточка квартиры (нарушение №32). Водоотведение осталось
+    # флагом — оно подведено всегда и не измеряется ничем, поэтому реестр о нём
+    # ничего сказать не может.
     has_sewage: bool
     rent: Decimal
     internet: Decimal
@@ -90,10 +91,10 @@ def compute_statement(config, consumption, tariffs):
     lines: list[LineItem] = []
     cold = hot = Decimal("0")
 
-    if config.has_cold_water:
+    if "cold_water" in consumption:
         line, cold = _metered_line("cold_water", consumption, tariffs)
         lines.append(line)
-    if config.has_hot_water:
+    if "hot_water" in consumption:
         # Двухкомпонентный ГВС: объём по счётчику (м³) оплачивается по
         # компоненту ХВ, а тепло на подогрев (объём × норматив, Гкал) — по
         # компоненту ТЭ. Водоотведение ниже считает только объём (hot).
@@ -119,11 +120,10 @@ def compute_statement(config, consumption, tariffs):
         rate = _tariff("sewage", tariffs)
         lines.append(LineItem("sewage", LABELS["sewage"], volume, rate, _money(volume * rate)))
 
-    if config.electricity_meter_type == MeterType.SINGLE:
-        line, _ = _metered_line("electricity_single", consumption, tariffs)
-        lines.append(line)
-    else:
-        for code in ("electricity_day", "electricity_night"):
+    # Однотарифный прибор или пара «день/ночь» — вопрос того, какие приборы
+    # заведены, а не того, что записано в карточке квартиры.
+    for code in ("electricity_single", "electricity_day", "electricity_night"):
+        if code in consumption:
             line, _ = _metered_line(code, consumption, tariffs)
             lines.append(line)
 
