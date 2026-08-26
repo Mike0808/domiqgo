@@ -55,6 +55,22 @@ def latest_value_before(apartment_id: int, resource: str,
     return None if row is None else row.value
 
 
+def previous_values(apartment_id: int, resources,
+                    period: date) -> dict[str, Decimal]:
+    """Базы отсчёта пачкой: ресурс → последнее показание до периода.
+
+    Ресурсов у точки учёта единицы, поэтому запрос на каждый — не проблема;
+    выигрыш от одного хитрого запроса не стоил бы того, что он перестанет
+    читаться.
+    """
+    found = {}
+    for resource in resources:
+        value = latest_value_before(apartment_id, resource, period)
+        if value is not None:
+            found[resource] = value
+    return found
+
+
 @transaction.atomic
 def store_readings(apartment_id: int, period: date, values: dict[str, Decimal],
                    entered_by_tenant: bool) -> None:

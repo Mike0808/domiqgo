@@ -1,13 +1,15 @@
-"""Приборы и показания ссылаются на квартиру идентификатором — шаги C2a и C2b.
+"""Что осталось у `billing/` от приборов и показаний — шаги C2a…C2d.
 
-Обе связи разорваны: ни у `Meter`, ни у `MeterReading` внешнего ключа на
-квартиру больше нет. Файл временный по замыслу и исчезнет на C2c, когда обе
-модели уедут в Metering, а защита квартиры от удаления — в Properties (C3).
+Связи разорваны, модели уехали в Metering, правила учёта — следом. Здесь
+проверяется только то, что осталось задачей `billing/`:
 
-Тесты промежуточных фаз (запись в оба поля, переключение чтений) переписаны
-шагами C2a3 и C2b3: проверять стало нечего — второго поля больше нет, а
-вместе с ним нет и способа полям разойтись. Осталось то, что разрыв сделал
-уязвимым: защита квартиры от удаления, которую держал `on_delete=PROTECT`.
+- защита квартиры от удаления, которую держал `on_delete=PROTECT`, а теперь
+  держит явная проверка через публичный API модуля;
+- форма ввода показаний, которую собирает представление.
+
+Изоляция точек учёта, база отсчёта и монотонность проверяются в
+`tests/metering/`: правила там, где живут. Файл временный и исчезнет на C3,
+когда удаление квартиры заменится выводом из эксплуатации.
 """
 
 from datetime import date
@@ -23,9 +25,7 @@ from django.utils import timezone
 from modules.metering.infrastructure.models import Meter, MeterReading
 from billing.consent import PRIVACY_POLICY_VERSION
 from billing.models import Apartment, Tenant
-from billing.services.statements import (
-    MissingBaselineError, _previous_readings, _readings_map,
-)
+
 
 pytestmark = pytest.mark.django_db
 
@@ -61,46 +61,17 @@ def tenant_client(apartment):
     return client
 
 
-# ------------------------------------------------------- чтения по ссылке
+# ------------------------------------------------- форма ввода показаний
 
-def test_the_form_finds_meters_by_the_reference(tenant_client, apartment):
-    """`views.py`: заводские номера в форме ввода показаний."""
+def test_the_form_shows_serial_numbers_from_metering(tenant_client, apartment):
+    """`views.py` строит форму из реестра приборов модуля."""
     Meter.objects.create(apartment_id=apartment.pk, resource="cold_water",
                          serial_number="CW-77", initial_value=Decimal("0"))
 
     assert "CW-77" in tenant_client.get("/").content.decode()
 
 
-def test_the_baseline_finds_meters_by_the_reference(apartment):
-    """`statements.py`: начальные показания как база первого месяца."""
-    Meter.objects.create(apartment_id=apartment.pk, resource="cold_water",
-                         initial_value=Decimal("100"))
-
-    assert _previous_readings(apartment, PERIOD, ["cold_water"]) == {
-        "cold_water": Decimal("100")}
-
-
-def test_the_baseline_finds_last_months_reading_by_the_reference(apartment):
-    """`statements.py`: показание прошлого месяца как база текущего."""
-    Meter.objects.create(apartment_id=apartment.pk, resource="cold_water",
-                         initial_value=Decimal("0"))
-    MeterReading.objects.create(apartment_id=apartment.pk,
-                                period=date(2026, 6, 1),
-                                resource="cold_water", value=Decimal("100"))
-
-    assert _previous_readings(apartment, PERIOD, ["cold_water"]) == {
-        "cold_water": Decimal("100")}
-
-
-def test_the_readings_map_finds_them_by_the_reference(apartment):
-    """`statements.py`: комплект показаний за период."""
-    MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
-                                resource="cold_water", value=Decimal("110"))
-
-    assert _readings_map(apartment, PERIOD) == {"cold_water": Decimal("110.000")}
-
-
-def test_the_form_prefills_from_the_reference(tenant_client, apartment):
+def test_the_form_prefills_readings_from_metering(tenant_client, apartment):
     Meter.objects.create(apartment_id=apartment.pk, resource="cold_water",
                          initial_value=Decimal("0"))
     MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
@@ -110,45 +81,6 @@ def test_the_form_prefills_from_the_reference(tenant_client, apartment):
         page = tenant_client.get("/").content.decode()
 
     assert "123.456" in page
-
-
-# ------------------------------------------------ изоляция между квартирами
-
-def test_one_apartment_does_not_see_another_apartments_meters(apartment):
-    """Фильтр по ссылке — не украшение: без него база отсчёта одной квартиры
-    собралась бы из приборов всех остальных."""
-    neighbour = Apartment.objects.create(label="кв. 2")
-    Meter.objects.create(apartment_id=apartment.pk, resource="cold_water",
-                         initial_value=Decimal("100"))
-    Meter.objects.create(apartment_id=neighbour.pk, resource="electricity_single",
-                         initial_value=Decimal("777"))
-
-    assert _previous_readings(apartment, PERIOD, ["cold_water"]) == {
-        "cold_water": Decimal("100")}
-    with pytest.raises(MissingBaselineError):
-        _previous_readings(apartment, PERIOD, ["electricity_single"])
-
-
-def test_a_neighbours_reading_is_not_taken_as_the_baseline(apartment):
-    """Без фильтра по ссылке база отсчёта собралась бы из чужих показаний —
-    и счёт вышел бы по расходу соседа."""
-    neighbour = Apartment.objects.create(label="кв. 2")
-    Meter.objects.create(apartment_id=apartment.pk, resource="cold_water",
-                         initial_value=Decimal("10"))
-    MeterReading.objects.create(apartment_id=neighbour.pk,
-                                period=date(2026, 6, 1),
-                                resource="cold_water", value=Decimal("999"))
-
-    assert _previous_readings(apartment, PERIOD, ["cold_water"]) == {
-        "cold_water": Decimal("10")}
-
-
-def test_a_neighbours_reading_does_not_reach_this_period(apartment):
-    neighbour = Apartment.objects.create(label="кв. 2")
-    MeterReading.objects.create(apartment_id=neighbour.pk, period=PERIOD,
-                                resource="cold_water", value=Decimal("999"))
-
-    assert _readings_map(apartment, PERIOD) == {}
 
 
 # -------------------------------------- защита взамен утраченного PROTECT

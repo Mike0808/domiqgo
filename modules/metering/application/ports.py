@@ -14,8 +14,8 @@ class MeteringRepository(Protocol):
 
     def readings_at(self, apartment_id: int, period: date) -> dict[str, Decimal]: ...
 
-    def latest_value_before(self, apartment_id: int, resource: str,
-                            period: date) -> Decimal | None: ...
+    def previous_values(self, apartment_id: int, resources,
+                        period: date) -> dict[str, Decimal]: ...
 
     def store_readings(self, apartment_id: int, period: date,
                        values: dict[str, Decimal],

@@ -68,31 +68,30 @@ LABELS = {
     "rounding": "Округление",
 }
 
-def _consumption(meter: str, current: dict, previous: dict) -> Decimal:
-    cur = current[meter]
-    prev = previous.get(meter, Decimal("0"))
-    used = cur - prev
-    if used < 0:
-        raise ValueError(f"Показание по счётчику «{meter}» уменьшилось: {prev} -> {cur}")
-    return used
-
 def _tariff(code: str, tariffs: dict) -> Decimal:
     try:
         return tariffs[code]
     except KeyError:
         raise MissingTariffError(f"Нет тарифа для услуги «{code}»")
 
-def _metered_line(code, current, previous, tariffs) -> tuple[LineItem, Decimal]:
-    qty = _consumption(code, current, previous)
+def _metered_line(code, consumption, tariffs) -> tuple[LineItem, Decimal]:
+    qty = consumption[code]
     rate = _tariff(code, tariffs)
     return LineItem(code, LABELS[code], qty, rate, _money(qty * rate)), qty
 
-def compute_statement(config, current, previous, tariffs):
+def compute_statement(config, consumption, tariffs):
+    """Счёт из готового расхода, тарифов и условий квартиры.
+
+    Расход приходит посчитанным: вычитание показаний и правило «показание не
+    уменьшается» — знание прибора, и с шага C2d они живут в Metering
+    (`modules/metering/domain/point.py`). Здесь остался счёт: какие услуги
+    начислить, по какой ставке и как сложить.
+    """
     lines: list[LineItem] = []
     cold = hot = Decimal("0")
 
     if config.has_cold_water:
-        line, cold = _metered_line("cold_water", current, previous, tariffs)
+        line, cold = _metered_line("cold_water", consumption, tariffs)
         lines.append(line)
     if config.has_hot_water:
         # Двухкомпонентный ГВС: объём по счётчику (м³) оплачивается по
@@ -102,7 +101,7 @@ def compute_statement(config, current, previous, tariffs):
             raise MissingHeatNormError(
                 "Не задан норматив подогрева ГВС (Гкал/м³): "
                 f"{config.gvs_heat_norm}")
-        hot = _consumption("hot_water", current, previous)
+        hot = consumption["hot_water"]
         cold_rate = _tariff("hot_water_cold_component", tariffs)
         lines.append(LineItem("hot_water_cold_component",
                               LABELS["hot_water_cold_component"],
@@ -121,11 +120,11 @@ def compute_statement(config, current, previous, tariffs):
         lines.append(LineItem("sewage", LABELS["sewage"], volume, rate, _money(volume * rate)))
 
     if config.electricity_meter_type == MeterType.SINGLE:
-        line, _ = _metered_line("electricity_single", current, previous, tariffs)
+        line, _ = _metered_line("electricity_single", consumption, tariffs)
         lines.append(line)
     else:
         for code in ("electricity_day", "electricity_night"):
-            line, _ = _metered_line(code, current, previous, tariffs)
+            line, _ = _metered_line(code, consumption, tariffs)
             lines.append(line)
 
     for code, amount in (("rent", config.rent), ("internet", config.internet),

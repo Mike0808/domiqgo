@@ -8,14 +8,12 @@
 |---|---|
 | `GetExpectedMeters(apartment_id)` | `get_expected_meters` |
 | `GetReadings(apartment_id, period)` | `get_readings` |
+| `GetConsumption(apartment_id, period)` | `get_consumption` |
 | `SubmitReadings` | `submit_readings` |
 
-**Чего здесь пока нет.** `GetConsumption` не заведён: вычитание показаний и
-правило монотонности живут в `billing/services/calculation.py` и переезжают
-шагом **C2d**. До тех пор Billing спрашивает базу отсчёта значением
-(`get_baseline_value`) и вычитает сам — ровно как раньше. Команды
-`RegisterMeter`, `CorrectReading`, `ClosePeriod`, `ReopenPeriod` появятся на
-C2f и C2g вместе с событиями и замком периода.
+**Чего здесь пока нет.** Команды `RegisterMeter`, `CorrectReading`,
+`ClosePeriod`, `ReopenPeriod` появятся на C2f и C2g вместе с событиями и
+замком периода.
 
 **Это точка сборки модуля.** Правило 3.5 запрещает `application/` обращаться
 к `infrastructure/`, поэтому реализацию хранилища подставляет сюда `api/`.
@@ -28,6 +26,9 @@ from decimal import Decimal
 
 from ..application import commands, queries
 from ..domain.catalogue import RESOURCES, UNITS, UnknownResource
+from ..domain.point import (
+    BaselineMissing, Consumption, ReadingWentBackwards,
+)
 
 
 def _repository():
@@ -52,16 +53,20 @@ def get_readings(apartment_id: int, period: date) -> dict[str, Decimal]:
     return queries.readings(_repository(), apartment_id, period)
 
 
-def get_baseline_value(apartment_id: int, resource: str,
-                       period: date) -> Decimal | None:
-    """Последнее показание до периода, либо `None`, если его не было.
+def get_consumption(apartment_id: int, period: date, resources) -> dict:
+    """Расход за период по каждому запрошенному ресурсу.
 
-    «Показания не было» — нормальный ответ, а не ошибка модуля. Чем его
-    заменить (начальным значением прибора) и считать ли отсутствие обоих
-    ошибкой, на шаге C2c по-прежнему решает Billing; правило переезжает
-    сюда на C2d.
+    Возвращает `Consumption`: расход и обе границы интервала. Границы нужны
+    счёту — жилец должен видеть, из чего получилась цифра, — а вычитает их
+    Metering, потому что при замене прибора вычитание перестаёт быть простой
+    разностью.
+
+    Отказы: `BaselineMissing`, если у части ресурсов нет ни предыдущего
+    показания, ни начального значения прибора; `ReadingWentBackwards`, если
+    показание меньше базы отсчёта. Оба — правила прибора, а не счёта, и с
+    шага C2d живут здесь.
     """
-    return queries.value_before(_repository(), apartment_id, resource, period)
+    return queries.consumption(_repository(), apartment_id, period, resources)
 
 
 def has_meters(apartment_id: int) -> bool:
@@ -96,7 +101,8 @@ def submit_readings(apartment_id: int, period: date,
 
 __all__ = [
     "UnknownResource",
-    "get_expected_meters", "get_readings", "get_baseline_value",
+    "Consumption", "BaselineMissing", "ReadingWentBackwards",
+    "get_expected_meters", "get_readings", "get_consumption",
     "has_meters", "has_readings", "resources", "units",
     "submit_readings",
 ]

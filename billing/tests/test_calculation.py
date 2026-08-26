@@ -25,10 +25,7 @@ TARIFFS = {
 def test_single_meter_full_bill():
     lines, total = compute_statement(
         cfg(rent="20000", internet="700"),
-        current={"cold_water": Decimal("110"), "hot_water": Decimal("55"),
-                 "electricity_single": Decimal("1500")},
-        previous={"cold_water": Decimal("100"), "hot_water": Decimal("50"),
-                  "electricity_single": Decimal("1400")},
+        consumption={"cold_water": Decimal("10"), "hot_water": Decimal("5"), "electricity_single": Decimal("100")},
         tariffs=TARIFFS,
     )
     by = {l.code: l for l in lines}
@@ -50,8 +47,7 @@ def test_single_meter_full_bill():
 def test_hot_water_heat_component_rounds_half_up():
     lines, _ = compute_statement(
         cfg(cold=False, sewage=False, norm="0.05"),
-        current={"hot_water": Decimal("1"), "electricity_single": Decimal("0")},
-        previous={"hot_water": Decimal("0"), "electricity_single": Decimal("0")},
+        consumption={"hot_water": Decimal("1"), "electricity_single": Decimal("0")},
         tariffs={**TARIFFS, "hot_water_heat_component": Decimal("2410.10")},
     )
     by = {l.code: l for l in lines}
@@ -64,8 +60,7 @@ def test_missing_heat_component_tariff_raises():
     with pytest.raises(MissingTariffError):
         compute_statement(
             cfg(cold=False, sewage=False),
-            current={"hot_water": Decimal("55"), "electricity_single": Decimal("0")},
-            previous={"hot_water": Decimal("50"), "electricity_single": Decimal("0")},
+            consumption={"hot_water": Decimal("5"), "electricity_single": Decimal("0")},
             tariffs=tariffs,
         )
 
@@ -80,8 +75,7 @@ def test_norm_not_above_zero_refuses_to_calculate(norm):
     with pytest.raises(MissingHeatNormError):
         compute_statement(
             cfg(cold=False, sewage=False, norm=norm),
-            current={"hot_water": Decimal("55"), "electricity_single": Decimal("0")},
-            previous={"hot_water": Decimal("50"), "electricity_single": Decimal("0")},
+            consumption={"hot_water": Decimal("5"), "electricity_single": Decimal("0")},
             tariffs=TARIFFS,
         )
 
@@ -90,8 +84,7 @@ def test_zero_norm_is_irrelevant_without_hot_water():
     """Отказ касается только квартир с подведённой ГВС."""
     lines, total = compute_statement(
         cfg(hot=False, sewage=False, norm="0"),
-        current={"cold_water": Decimal("110"), "electricity_single": Decimal("0")},
-        previous={"cold_water": Decimal("100"), "electricity_single": Decimal("0")},
+        consumption={"cold_water": Decimal("10"), "electricity_single": Decimal("0")},
         tariffs=TARIFFS,
     )
     assert {l.code for l in lines} == {"cold_water", "electricity_single"}
@@ -100,8 +93,7 @@ def test_zero_norm_is_irrelevant_without_hot_water():
 def test_dual_meter_splits_day_night():
     lines, total = compute_statement(
         cfg(meter=MeterType.DUAL, cold=False, hot=False, sewage=False),
-        current={"electricity_day": Decimal("1200"), "electricity_night": Decimal("800")},
-        previous={"electricity_day": Decimal("1100"), "electricity_night": Decimal("700")},
+        consumption={"electricity_day": Decimal("100"), "electricity_night": Decimal("100")},
         tariffs=TARIFFS,
     )
     by = {l.code: l for l in lines}
@@ -115,8 +107,7 @@ def test_dual_meter_splits_day_night():
 def test_total_already_multiple_of_50_has_no_rounding_line():
     lines, total = compute_statement(
         cfg(cold=False, hot=False, sewage=False, rent="20000"),
-        current={"electricity_single": Decimal("50")},
-        previous={"electricity_single": Decimal("50")},
+        consumption={"electricity_single": Decimal("0")},
         tariffs=TARIFFS,
     )
     assert total == Decimal("20000.00")
@@ -125,8 +116,7 @@ def test_total_already_multiple_of_50_has_no_rounding_line():
 def test_total_at_or_below_10000_is_not_rounded():
     lines, total = compute_statement(
         cfg(cold=False, hot=False, sewage=False, rent="9999.81"),
-        current={"electricity_single": Decimal("0")},
-        previous={"electricity_single": Decimal("0")},
+        consumption={"electricity_single": Decimal("0")},
         tariffs=TARIFFS,
     )
     assert total == Decimal("9999.81")
@@ -135,8 +125,7 @@ def test_total_at_or_below_10000_is_not_rounded():
 def test_rounding_disabled_by_checkbox_even_for_large_total():
     lines, total = compute_statement(
         cfg(cold=False, hot=False, sewage=False, rent="60047.81", round_total=False),
-        current={"electricity_single": Decimal("0")},
-        previous={"electricity_single": Decimal("0")},
+        consumption={"electricity_single": Decimal("0")},
         tariffs=TARIFFS,
     )
     assert total == Decimal("60047.81")
@@ -145,8 +134,7 @@ def test_rounding_disabled_by_checkbox_even_for_large_total():
 def test_large_total_rounds_down_to_50():
     lines, total = compute_statement(
         cfg(cold=False, hot=False, sewage=False, rent="60097.81"),
-        current={"electricity_single": Decimal("0")},
-        previous={"electricity_single": Decimal("0")},
+        consumption={"electricity_single": Decimal("0")},
         tariffs=TARIFFS,
     )
     by = {l.code: l for l in lines}
@@ -156,8 +144,7 @@ def test_large_total_rounds_down_to_50():
 def test_heat_line_label_shows_volume_and_norm():
     lines, _ = compute_statement(
         cfg(cold=False, sewage=False, norm="0.05760"),
-        current={"hot_water": Decimal("1"), "electricity_single": Decimal("0")},
-        previous={"hot_water": Decimal("0"), "electricity_single": Decimal("0")},
+        consumption={"hot_water": Decimal("1"), "electricity_single": Decimal("0")},
         tariffs={**TARIFFS, "hot_water_heat_component": Decimal("3347.81")},
     )
     heat = {l.code: l for l in lines}["hot_water_heat_component"]
@@ -169,25 +156,18 @@ def test_missing_tariff_raises():
     with pytest.raises(MissingTariffError):
         compute_statement(
             cfg(hot=False, sewage=False, meter=MeterType.SINGLE),
-            current={"cold_water": Decimal("110"), "electricity_single": Decimal("1500")},
-            previous={"cold_water": Decimal("100"), "electricity_single": Decimal("1400")},
+            consumption={"cold_water": Decimal("10"), "electricity_single": Decimal("100")},
             tariffs={"electricity_single": Decimal("4.87")},  # no cold_water tariff
         )
 
-def test_reading_going_backward_raises():
-    with pytest.raises(ValueError):
-        compute_statement(
-            cfg(hot=False, sewage=False),
-            current={"cold_water": Decimal("90"), "electricity_single": Decimal("1500")},
-            previous={"cold_water": Decimal("100"), "electricity_single": Decimal("1400")},
-            tariffs=TARIFFS,
-        )
+# `test_reading_going_backward_raises` уехал в
+# `tests/metering/test_point.py` шагом C2d вместе с самим правилом: «показание
+# не уменьшается» — знание прибора, а не счёта.
 
 def test_zero_fixed_charges_omitted():
     lines, _ = compute_statement(
         cfg(cold=False, hot=False, sewage=False),
-        current={"electricity_single": Decimal("50")},
-        previous={"electricity_single": Decimal("50")},
+        consumption={"electricity_single": Decimal("0")},
         tariffs=TARIFFS,
     )
     assert all(l.code not in ("rent", "internet", "other_fixed") for l in lines)

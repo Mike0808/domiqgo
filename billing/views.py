@@ -54,7 +54,7 @@ def current_month(request):
                         {meter: form.cleaned_data[meter] for meter in meters},
                         entered_by_tenant=True)
                     generate_statement(apartment, period)
-            except ValueError as exc:
+            except metering.ReadingWentBackwards as exc:
                 messages.error(request, f"Ошибка: показание уменьшилось. {exc}")
                 return render(request, "billing/current_month.html",
                               {"form": form, "statement": None, "period": period,

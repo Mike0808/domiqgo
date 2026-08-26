@@ -1,8 +1,11 @@
-"""Публичная поверхность Metering: реестр приборов, показания, база отсчёта.
+"""Публичная поверхность Metering: реестр приборов, показания, расход.
 
-Шаг C2c переносит владение данными и не меняет поведения, поэтому проверяется
-ровно то, что делал `billing/` до переезда, — включая перезапись комплекта при
-повторной сдаче. Правила, ограничивающие перезапись, приезжают на C2d и C2g.
+Здесь проверяется связка целиком — от api до таблицы. Сами правила (база
+отсчёта, монотонность) проверяются без базы в `test_point.py`: дублировать их
+здесь значило бы проверять домен через хранилище, ради чего он и отделён.
+
+Перезапись комплекта при повторной сдаче сохранена дословно с шага C2c:
+ограничения на неё — замок периода — приезжают на C2g.
 """
 
 from datetime import date
@@ -90,39 +93,53 @@ def test_readings_of_another_point_are_not_returned():
     assert api.get_readings(APARTMENT, JULY) == {}
 
 
-# --------------------------------------------------------------- база отсчёта
+# ------------------------------------------------------------------- расход
 
-def test_baseline_is_the_latest_value_before_the_period():
-    _reading("cold_water", date(2026, 5, 1), "90")
+def test_consumption_counts_from_the_previous_period():
+    _meter("cold_water", initial="0")
     _reading("cold_water", JUNE, "100")
-
-    assert api.get_baseline_value(APARTMENT, "cold_water", JULY) == Decimal("100.000")
-
-
-def test_baseline_ignores_the_period_itself():
-    """Расход считается от **предыдущего** показания: значение того же периода
-    базой быть не может, иначе расход всегда нулевой."""
     _reading("cold_water", JULY, "110")
 
-    assert api.get_baseline_value(APARTMENT, "cold_water", JULY) is None
+    used = api.get_consumption(APARTMENT, JULY, ["cold_water"])
+
+    assert used["cold_water"].used == Decimal("10.000")
 
 
-def test_baseline_is_none_when_nothing_was_ever_submitted():
-    """«Показания не было» — нормальный ответ. Чем его заменить, на шаге C2c
-    решает Billing: начальным значением прибора."""
-    assert api.get_baseline_value(APARTMENT, "cold_water", JULY) is None
+def test_consumption_of_the_first_month_counts_from_the_act():
+    """Показаний ещё не сдавали — базой становится начальное значение
+    прибора, зафиксированное при подписании договора."""
+    _meter("cold_water", initial="100")
+    _reading("cold_water", JULY, "110")
+
+    used = api.get_consumption(APARTMENT, JULY, ["cold_water"])
+
+    assert used["cold_water"].used == Decimal("10.000")
 
 
-def test_baseline_is_per_resource():
-    _reading("cold_water", JUNE, "100")
-
-    assert api.get_baseline_value(APARTMENT, "electricity_single", JULY) is None
-
-
-def test_baseline_is_per_point():
+def test_consumption_does_not_take_a_neighbours_reading_as_the_baseline():
+    _meter("cold_water", initial="100")
     _reading("cold_water", JUNE, "999", apartment_id=NEIGHBOUR)
+    _reading("cold_water", JULY, "110")
 
-    assert api.get_baseline_value(APARTMENT, "cold_water", JULY) is None
+    used = api.get_consumption(APARTMENT, JULY, ["cold_water"])
+
+    assert used["cold_water"].baseline == Decimal("100.000")
+
+
+def test_consumption_refuses_without_a_baseline():
+    _reading("cold_water", JULY, "110")
+
+    with pytest.raises(api.BaselineMissing):
+        api.get_consumption(APARTMENT, JULY, ["cold_water"])
+
+
+def test_consumption_refuses_a_backward_reading():
+    _meter("cold_water", initial="0")
+    _reading("cold_water", JUNE, "100")
+    _reading("cold_water", JULY, "90")
+
+    with pytest.raises(api.ReadingWentBackwards):
+        api.get_consumption(APARTMENT, JULY, ["cold_water"])
 
 
 # ------------------------------------------------------------ сдача комплекта

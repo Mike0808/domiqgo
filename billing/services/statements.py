@@ -21,31 +21,20 @@ def meters_for(apartment) -> list[str]:
         meters.extend(["electricity_day", "electricity_night"])
     return meters
 
-def _readings_map(apartment, period) -> dict:
-    return metering.get_readings(apartment.pk, period)
+def _consumption_for(apartment, period, meters) -> dict:
+    """Расход по приборам квартиры за период.
 
-def _previous_readings(apartment, period, meters) -> dict:
-    """Baseline per meter: the latest reading before `period`, else the
-    contract-fixed initial value from the apartment's Meter. A meter with
-    neither is an error — billing from an implicit 0 overcharges the tenant.
+    Правило базы отсчёта уехало в Metering шагом C2d — вместе с самим
+    прибором, которому оно и принадлежит. Здесь остался перевод отказа модуля
+    на язык Billing: «нет базы отсчёта» модуль называет фактом, а ошибкой
+    расчёта его по-прежнему назначает счёт.
     """
-    # Шаг C2c: приборы и показания спрашиваются у Metering, а не читаются
-    # из собственных таблиц — их у Billing больше нет.
-    initials = {m.resource: m.initial_value
-                for m in metering.get_expected_meters(apartment.pk)}
-    result, missing = {}, []
-    for meter in meters:
-        previous = metering.get_baseline_value(apartment.pk, meter, period)
-        if previous is not None:
-            result[meter] = previous
-        elif meter in initials:
-            result[meter] = initials[meter]
-        else:
-            missing.append(meter)
-    if missing:
+    try:
+        used = metering.get_consumption(apartment.pk, period, meters)
+    except metering.BaselineMissing as gap:
         raise MissingBaselineError(
-            "Нет начальных показаний для: " + ", ".join(missing))
-    return result
+            "Нет начальных показаний для: " + ", ".join(gap.resources))
+    return {resource: value.used for resource, value in used.items()}
 
 def _tariffs_for(period) -> dict:
     """Ставки, действующие на дату начала периода.
@@ -75,10 +64,9 @@ def generate_statement(apartment, period: date) -> MonthlyStatement:
         rent=apartment.rent, internet=apartment.internet, other_fixed=apartment.other_fixed,
         gvs_heat_norm=apartment.gvs_heat_norm, round_total=apartment.round_total,
     )
-    current = _readings_map(apartment, period)
-    previous = _previous_readings(apartment, period, meters_for(apartment))
+    consumption = _consumption_for(apartment, period, meters_for(apartment))
     tariffs = _tariffs_for(period)
-    lines, total = compute_statement(config, current, previous, tariffs)
+    lines, total = compute_statement(config, consumption, tariffs)
     stmt, _created = MonthlyStatement.objects.update_or_create(
         apartment=apartment, period=period,
         defaults={"lines": [line_to_dict(l) for l in lines], "total": total},
