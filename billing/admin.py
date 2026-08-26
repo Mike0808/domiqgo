@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils import timezone
 # Приборы и показания принадлежат Metering (шаг C2c), но их админка осталась
 # здесь. Списки показывают квартиру по названию, а название принадлежит
 # Properties: обратиться к ней Metering не вправе — он лист графа зависимостей
@@ -9,6 +10,7 @@ from django.contrib import admin
 from django.contrib import messages
 from django.utils.html import format_html
 from modules.metering import api as metering
+from modules.properties import api as properties
 from modules.metering.infrastructure.models import (
     Meter, MeterReading, PeriodLock,
 )
@@ -37,9 +39,18 @@ class ApartmentAdmin(admin.ModelAdmin):
 
     @admin.action(description="Вывести из эксплуатации")
     def decommission_properties(self, request, queryset):
+        """Вывод идёт командой модуля, а не правкой поля.
+
+        Иначе `PropertyDecommissioned` не наступит, а на нём держится правило
+        Tenancy «на выведенном объекте новых договоров не заключают»
+        ([ADR-0009](../docs/architecture/adr/0009-property-decommission-and-active-tenancy.md)).
+        Дата берётся здесь, а не в модуле: «сегодня» — понятие интерфейса, и
+        владелец вправе указать другое число.
+        """
         count = queryset.count()
-        for apartment in queryset:
-            apartment.decommission()
+        today = timezone.localdate()
+        for apartment_id in list(queryset.values_list("pk", flat=True)):
+            properties.decommission_property(apartment_id, today)
         self.message_user(
             request,
             f"Выведено из эксплуатации: {count}. История по этим объектам "
@@ -49,8 +60,8 @@ class ApartmentAdmin(admin.ModelAdmin):
     @admin.action(description="Вернуть в эксплуатацию")
     def recommission_properties(self, request, queryset):
         count = queryset.count()
-        for apartment in queryset:
-            apartment.recommission()
+        for apartment_id in list(queryset.values_list("pk", flat=True)):
+            properties.recommission_property(apartment_id)
         self.message_user(request, f"Возвращено в эксплуатацию: {count}.")
 
     @admin.display(description="Эксплуатация", ordering="decommissioned_on")

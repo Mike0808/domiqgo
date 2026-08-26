@@ -22,6 +22,7 @@ from django.test import Client
 from django.utils import timezone
 
 from modules.metering.infrastructure.models import Meter, MeterReading
+from modules.properties import api as properties
 from billing.consent import PRIVACY_POLICY_VERSION
 from billing.models import Apartment, Tenant
 
@@ -111,21 +112,21 @@ def test_the_refusal_says_what_to_do_instead(apartment):
 
 
 def test_a_new_apartment_is_in_service(apartment):
-    assert apartment.in_service is True
+    assert properties.get_property(apartment.pk).in_service is True
     assert apartment.decommissioned_on is None
 
 
 def test_decommissioning_records_the_date(apartment):
     """Датой, а не флагом: владельцу важно, с какого числа объект перестал
     сдаваться, а отчёту за прошлый год — что тогда он ещё сдавался."""
-    apartment.decommission(date(2026, 7, 15))
+    properties.decommission_property(apartment.pk, date(2026, 7, 15))
 
-    assert apartment.in_service is False
+    assert properties.get_property(apartment.pk).in_service is False
     assert Apartment.objects.get().decommissioned_on == date(2026, 7, 15)
 
 
 def test_decommissioning_defaults_to_today(apartment):
-    apartment.decommission()
+    properties.decommission_property(apartment.pk, timezone.localdate())
 
     assert Apartment.objects.get().decommissioned_on == timezone.localdate()
 
@@ -137,7 +138,7 @@ def test_decommissioning_keeps_the_history(apartment):
     MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
                                 resource="cold_water", value=Decimal("110"))
 
-    apartment.decommission()
+    properties.decommission_property(apartment.pk, timezone.localdate())
 
     assert Meter.objects.count() == 1
     assert MeterReading.objects.count() == 1
@@ -145,17 +146,17 @@ def test_decommissioning_keeps_the_history(apartment):
 
 def test_recommissioning_returns_it_to_service(apartment):
     """Ошибиться можно и здесь, и тупика быть не должно."""
-    apartment.decommission()
+    properties.decommission_property(apartment.pk, timezone.localdate())
 
-    apartment.recommission()
+    properties.recommission_property(apartment.pk)
 
     assert Apartment.objects.get().decommissioned_on is None
-    assert apartment.in_service is True
+    assert properties.get_property(apartment.pk).in_service is True
 
 
 def test_decommissioning_one_leaves_the_neighbour_in_service(apartment):
     neighbour = Apartment.objects.create(label="кв. 2")
 
-    apartment.decommission()
+    properties.decommission_property(apartment.pk, timezone.localdate())
 
-    assert Apartment.objects.get(pk=neighbour.pk).in_service is True
+    assert properties.get_property(neighbour.pk).in_service is True

@@ -33,11 +33,13 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from django.utils import timezone
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db.models import ProtectedError
 
 from modules.metering.infrastructure.models import Meter, MeterReading
+from modules.properties import api as properties
 from billing.models import Apartment, MonthlyStatement, Tenant
 from billing.services.calculation import MissingHeatNormError
 from billing.services.statements import (
@@ -285,8 +287,8 @@ def test_an_apartment_that_was_never_used_is_not_deleted_either():
     with pytest.raises(ProtectedError):
         apartment.delete()
 
-    apartment.decommission()
-    assert apartment.in_service is False
+    properties.decommission_property(apartment.pk, timezone.localdate())
+    assert properties.get_property(apartment.pk).in_service is False
     assert Apartment.objects.count() == 1
 
 

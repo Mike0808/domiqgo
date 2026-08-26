@@ -1,9 +1,11 @@
 from datetime import date
 from decimal import Decimal
 import pytest
+from django.utils import timezone
 from django.contrib.auth.models import User
 from django.test import Client
 from modules.metering.infrastructure.models import Meter, MeterReading
+from modules.properties import api as properties
 from billing.models import Apartment, MonthlyStatement
 from modules.tariffs.api import publish_tariff_version
 
@@ -18,7 +20,7 @@ def admin_client():
 
 def test_admin_apartment_changelist_loads(admin_client):
     Apartment.objects.create(label="кв. 10")
-    resp = admin_client.get("/admin/billing/apartment/")
+    resp = admin_client.get("/admin/properties/apartment/")
     assert resp.status_code == 200
 
 def test_regenerate_action_recomputes_total(admin_client):
@@ -80,7 +82,7 @@ def test_the_apartment_list_names_the_meters_to_register(admin_client):
     пересчёта владелец не увидит никогда. Поэтому нехватка видна в списке."""
     Apartment.objects.create(label="кв. 10", has_hot_water=False)
 
-    page = admin_client.get("/admin/billing/apartment/").content.decode()
+    page = admin_client.get("/admin/properties/apartment/").content.decode()
 
     assert "Холодная вода" in page
     assert "Электроэнергия" in page
@@ -93,7 +95,7 @@ def test_the_apartment_list_stays_quiet_when_the_registry_is_complete(admin_clie
     Meter.objects.create(apartment_id=a.pk, resource="electricity_single",
                          initial_value=Decimal("0"))
 
-    page = admin_client.get("/admin/billing/apartment/").content.decode()
+    page = admin_client.get("/admin/properties/apartment/").content.decode()
 
     assert "Холодная вода" not in page
 
@@ -175,7 +177,7 @@ def test_the_apartment_list_offers_no_delete_action(admin_client):
     после подтверждения."""
     Apartment.objects.create(label="кв. 10")
 
-    page = admin_client.get("/admin/billing/apartment/").content.decode()
+    page = admin_client.get("/admin/properties/apartment/").content.decode()
 
     assert "delete_selected" not in page
     assert "Вывести из эксплуатации" in page
@@ -184,7 +186,7 @@ def test_the_apartment_list_offers_no_delete_action(admin_client):
 def test_the_change_form_offers_no_delete_button(admin_client):
     a = Apartment.objects.create(label="кв. 10")
 
-    page = admin_client.get(f"/admin/billing/apartment/{a.pk}/change/").content.decode()
+    page = admin_client.get(f"/admin/properties/apartment/{a.pk}/change/").content.decode()
 
     assert "Удалить" not in page
 
@@ -195,7 +197,7 @@ def test_the_action_decommissions_and_warns_about_contracts(admin_client):
     административной отметки."""
     a = Apartment.objects.create(label="кв. 10")
 
-    resp = admin_client.post("/admin/billing/apartment/", {
+    resp = admin_client.post("/admin/properties/apartment/", {
         "action": "decommission_properties",
         "_selected_action": [str(a.pk)],
     }, follow=True)
@@ -209,9 +211,9 @@ def test_the_action_decommissions_and_warns_about_contracts(admin_client):
 
 def test_the_action_returns_a_property_to_service(admin_client):
     a = Apartment.objects.create(label="кв. 10")
-    a.decommission()
+    properties.decommission_property(a.pk, timezone.localdate())
 
-    admin_client.post("/admin/billing/apartment/", {
+    admin_client.post("/admin/properties/apartment/", {
         "action": "recommission_properties",
         "_selected_action": [str(a.pk)],
     }, follow=True)
@@ -222,8 +224,59 @@ def test_the_action_returns_a_property_to_service(admin_client):
 
 def test_the_list_shows_the_service_state(admin_client):
     a = Apartment.objects.create(label="кв. 10")
-    a.decommission(date(2026, 7, 15))
+    properties.decommission_property(a.pk, date(2026, 7, 15))
 
-    page = admin_client.get("/admin/billing/apartment/").content.decode()
+    page = admin_client.get("/admin/properties/apartment/").content.decode()
 
     assert "выведен 15.07.2026" in page
+
+
+@pytest.mark.django_db(transaction=True)
+def test_decommissioning_from_the_admin_announces_it(admin_client):
+    """Вывод обязан идти командой модуля, а не правкой поля.
+
+    Иначе `PropertyDecommissioned` не наступит, а на нём держится правило
+    Tenancy «на выведенном объекте новых договоров не заключают» (ADR-0009).
+    Проверка результата этого не ловит: правка поля даёт тот же выведенный
+    объект — мутация «queryset.update вместо команды» прошла зелёной, пока
+    этого теста не было.
+    """
+    from bus import clear_subscribers, subscribe
+    from modules.properties.events import PropertyDecommissioned
+
+    clear_subscribers()
+    received = []
+    subscribe(PropertyDecommissioned, received.append)
+    try:
+        a = Apartment.objects.create(label="кв. 10")
+
+        admin_client.post("/admin/properties/apartment/", {
+            "action": "decommission_properties",
+            "_selected_action": [str(a.pk)],
+        }, follow=True)
+
+        assert [e.apartment_id for e in received] == [a.pk]
+    finally:
+        clear_subscribers()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_recommissioning_from_the_admin_announces_it(admin_client):
+    from bus import clear_subscribers, subscribe
+    from modules.properties.events import PropertyRecommissioned
+
+    clear_subscribers()
+    received = []
+    subscribe(PropertyRecommissioned, received.append)
+    try:
+        a = Apartment.objects.create(label="кв. 10")
+        properties.decommission_property(a.pk, date(2026, 7, 15))
+
+        admin_client.post("/admin/properties/apartment/", {
+            "action": "recommission_properties",
+            "_selected_action": [str(a.pk)],
+        }, follow=True)
+
+        assert [e.apartment_id for e in received] == [a.pk]
+    finally:
+        clear_subscribers()

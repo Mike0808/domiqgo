@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     # у которого нет ни одного FK и на который никто не ссылается.
     "modules.tariffs.apps.TariffsConfig",
     "modules.metering.apps.MeteringConfig",
+    "modules.properties.apps.PropertiesConfig",
 ]
 
 SITE_ID = 1
@@ -189,6 +190,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 MIGRATION_MODULES = {
     "tariffs": "modules.tariffs.infrastructure.migrations",
     "metering": "modules.metering.infrastructure.migrations",
+    "properties": "modules.properties.infrastructure.migrations",
 }
 
 
