@@ -7,6 +7,7 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.static import serve
 from allauth.socialaccount.models import SocialAccount
+from modules.identity import api as identity
 from modules.metering import api as metering
 from .consent import PRIVACY_POLICY_VERSION
 from .forms import MeterReadingForm, ConsentForm
@@ -120,11 +121,12 @@ def oauth_connections(request):
     form = ConsentForm(request.POST) if request.method == "POST" else ConsentForm()
     if request.method == "POST":
         if form.is_valid():
-            tenant.privacy_consent_at = timezone.now()
-            tenant.privacy_consent_version = PRIVACY_POLICY_VERSION
-            tenant.save(update_fields=["privacy_consent_at", "privacy_consent_version"])
+            # Согласие принадлежит учётной записи, а не профилю жильца, и
+            # хранится журналом: каждый акт согласия — отдельный факт (шаг C4a).
+            identity.grant_privacy_consent(
+                request.user.pk, PRIVACY_POLICY_VERSION, timezone.now())
             return redirect("oauth_connections")
-    if tenant.privacy_consent_version != PRIVACY_POLICY_VERSION:
+    if not identity.has_current_consent(request.user.pk, PRIVACY_POLICY_VERSION):
         return render(request, "billing/oauth_consent.html",
                        {"form": form, "policy_version": PRIVACY_POLICY_VERSION})
     connected_provider_ids = list(

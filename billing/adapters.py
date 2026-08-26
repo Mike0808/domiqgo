@@ -1,6 +1,7 @@
 from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
 from django.shortcuts import redirect, render
+from modules.identity import api as identity
 from .consent import PRIVACY_POLICY_VERSION
 
 class NoSignupSocialAccountAdapter(DefaultSocialAccountAdapter):
@@ -18,8 +19,14 @@ class NoSignupSocialAccountAdapter(DefaultSocialAccountAdapter):
         if sociallogin.is_existing:
             return  # already linked -> ordinary login, proceed
         if request.user.is_authenticated:
+            # Согласие спрашивается у Identity: оно принадлежит учётной записи
+            # и хранится журналом (шаг C4a). Проверка профиля жильца пока
+            # остаётся — это и есть дефект №33, из-за которого владелец ходит
+            # по кругу; он чинится следующим шагом, отдельно от переноса
+            # (правило 7.4).
             tenant = getattr(request.user, "tenant", None)
-            if tenant is None or tenant.privacy_consent_version != PRIVACY_POLICY_VERSION:
+            if tenant is None or not identity.has_current_consent(
+                    request.user.pk, PRIVACY_POLICY_VERSION):
                 raise ImmediateHttpResponse(redirect("oauth_connections"))
             return  # consent on file -> allow attaching the new provider
         raise ImmediateHttpResponse(

@@ -3,6 +3,9 @@ import pytest
 from django.contrib.auth.models import AnonymousUser, User
 from django.test import RequestFactory
 from billing.adapters import NoSignupSocialAccountAdapter
+from django.utils import timezone
+
+from modules.identity import api as identity
 from billing.consent import PRIVACY_POLICY_VERSION
 from billing.models import Apartment, Tenant
 
@@ -48,9 +51,8 @@ def test_pre_social_login_redirects_to_connections_when_consent_missing():
 def test_pre_social_login_proceeds_when_consent_given():
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("petrov", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a, full_name="Петров",
-                         privacy_consent_at=date(2026, 7, 27),
-                         privacy_consent_version=PRIVACY_POLICY_VERSION)
+    Tenant.objects.create(user=u, apartment=a, full_name="Петров")
+    identity.grant_privacy_consent(u.pk, PRIVACY_POLICY_VERSION, timezone.now())
     adapter = NoSignupSocialAccountAdapter()
     # Must not raise — connect is allowed once consent matches the current version.
     adapter.pre_social_login(_request(u), _FakeSocialLogin(False))

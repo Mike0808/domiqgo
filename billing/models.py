@@ -23,12 +23,9 @@ class Tenant(models.Model):
     messenger_platform = models.CharField(max_length=10, blank=True)
     messenger_chat_id = models.CharField(max_length=64, blank=True)
     link_code = models.CharField(max_length=32, blank=True)
-    # 152-ФЗ: consent must be on file, for the current policy version,
-    # before a tenant may connect any OAuth provider (see billing/adapters.py).
-    privacy_consent_at = models.DateTimeField(
-        "Согласие на обработку ПДн дано", null=True, blank=True)
-    privacy_consent_version = models.CharField(
-        "Версия политики на момент согласия", max_length=32, blank=True)
+    # Согласие на обработку ПДн уехало в `modules/identity/` шагом C4a: оно
+    # принадлежит учётной записи, а не профилю жильца, и хранится журналом, а
+    # не парой полей. Читать через `modules.identity.api`.
 
     class Meta:
         verbose_name = "Жилец"
