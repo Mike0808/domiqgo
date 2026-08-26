@@ -7,6 +7,12 @@
 жил с исправления дефекта №29.
 """
 
-from .property import Apartment, HeatNormMissing, ensure_heat_norm_is_set
+from .property import (
+    Apartment, HeatNormMissing, LabelMissing, ensure_heat_norm_is_set,
+    ensure_label_is_set,
+)
 
-__all__ = ["Apartment", "HeatNormMissing", "ensure_heat_norm_is_set"]
+__all__ = [
+    "Apartment", "HeatNormMissing", "LabelMissing",
+    "ensure_heat_norm_is_set", "ensure_label_is_set",
+]

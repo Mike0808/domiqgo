@@ -13,6 +13,39 @@
 
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
+
+
+@dataclass(frozen=True)
+class PropertyRegistered:
+    """Объект заведён в реестре."""
+
+    apartment_id: int
+    label: str
+
+
+@dataclass(frozen=True)
+class PropertyServiceCompositionChanged:
+    """Состав подведённых услуг или норматив подогрева изменились.
+
+    Подписчика в P1 нет сознательно: изменение состава влияет только на ещё не
+    выставленные счета, а уже выставленные защищены неизменяемостью документа
+    ([ADR-0005](../../../docs/architecture/adr/0005-retroactive-tariff-correction.md))
+    — пересчитывать нечего, и Billing реагировать не должен.
+
+    Прежний состав едет в нагрузке рядом с новым: подписчик должен понять,
+    что именно изменилось, не обращаясь обратно в Properties.
+    """
+
+    apartment_id: int
+    was_cold_water: bool
+    was_hot_water: bool
+    was_sewage: bool
+    now_cold_water: bool
+    now_hot_water: bool
+    now_sewage: bool
+    previous_heat_norm: Decimal
+    new_heat_norm: Decimal
 
 
 @dataclass(frozen=True)

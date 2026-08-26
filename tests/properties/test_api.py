@@ -12,7 +12,8 @@ import pytest
 from bus import clear_subscribers, subscribe
 from modules.properties import api
 from modules.properties.events import (
-    PropertyDecommissioned, PropertyRecommissioned,
+    PropertyDecommissioned, PropertyRecommissioned, PropertyRegistered,
+    PropertyServiceCompositionChanged,
 )
 from modules.properties.infrastructure.models import Apartment
 
@@ -31,7 +32,8 @@ def _empty_registry():
 @pytest.fixture
 def received():
     events = []
-    for event_type in (PropertyDecommissioned, PropertyRecommissioned):
+    for event_type in (PropertyRegistered, PropertyServiceCompositionChanged,
+                       PropertyDecommissioned, PropertyRecommissioned):
         subscribe(event_type, events.append)
     return events
 
@@ -89,6 +91,123 @@ def test_listing_is_ordered_by_label():
     _apartment("А")
 
     assert [a.label for a in api.list_properties()] == ["А", "Б"]
+
+
+# --------------------------------------------------- заведение и правка
+
+def test_registering_stores_the_object_and_announces_it(received):
+    apartment_id = api.register_property(
+        "Ленина", address="Уфа, Ленина 1", has_hot_water=False)
+
+    stored = api.get_property(apartment_id)
+    assert (stored.label, stored.address) == ("Ленина", "Уфа, Ленина 1")
+    assert [type(e) for e in received] == [PropertyRegistered]
+    assert received[0].label == "Ленина"
+
+
+def test_registering_without_a_label_is_refused(received):
+    with pytest.raises(api.LabelMissing):
+        api.register_property("")
+
+    assert Apartment.objects.count() == 0
+    assert received == []
+
+
+def test_registering_hot_water_without_a_norm_is_refused(received):
+    """Объект с подведённой ГВС и нулевым нормативом не должен существовать
+    даже мгновение: он молча недоначисляет (дефект №29)."""
+    with pytest.raises(api.HeatNormMissing):
+        api.register_property("Ленина", has_hot_water=True)
+
+    assert Apartment.objects.count() == 0
+    assert received == []
+
+
+def test_renaming_changes_the_label_and_the_address(received):
+    apartment_id = api.register_property("Ленина", has_hot_water=False)
+    received.clear()
+
+    api.rename_property(apartment_id, "Ленина 1", "Уфа, Ленина 1")
+
+    stored = api.get_property(apartment_id)
+    assert (stored.label, stored.address) == ("Ленина 1", "Уфа, Ленина 1")
+
+
+def test_renaming_announces_nothing(received):
+    """Ни одно правило системы не зависит от того, как владелец назвал
+    квартиру, — и события спецификация не заводит."""
+    apartment_id = api.register_property("Ленина", has_hot_water=False)
+    received.clear()
+
+    api.rename_property(apartment_id, "Ленина 1")
+
+    assert received == []
+
+
+def test_changing_the_composition_announces_both_sides(received):
+    """Прежний состав едет рядом с новым: подписчик должен понять, что именно
+    изменилось, не обращаясь обратно в Properties."""
+    apartment_id = api.register_property("Ленина", has_hot_water=False)
+    received.clear()
+
+    api.change_service_composition(
+        apartment_id, has_cold_water=True, has_hot_water=True,
+        has_sewage=False, gvs_heat_norm=Decimal("0.05229"))
+
+    event = received[0]
+    assert isinstance(event, PropertyServiceCompositionChanged)
+    assert (event.was_hot_water, event.now_hot_water) == (False, True)
+    assert (event.was_sewage, event.now_sewage) == (True, False)
+    assert (event.previous_heat_norm, event.new_heat_norm) == (
+        Decimal("0"), Decimal("0.05229"))
+
+
+def test_changing_the_composition_stores_it(received):
+    """Событие — половина дела: подписчику незачем узнавать о том, чего не
+    произошло. Проверять надо и объявление, и запись."""
+    apartment_id = api.register_property("Ленина", has_hot_water=False)
+
+    api.change_service_composition(
+        apartment_id, has_cold_water=False, has_hot_water=True,
+        has_sewage=False, gvs_heat_norm=Decimal("0.05229"))
+
+    stored = api.get_property(apartment_id)
+    assert (stored.has_cold_water, stored.has_hot_water, stored.has_sewage) == (
+        False, True, False)
+    assert stored.gvs_heat_norm == Decimal("0.05229")
+
+
+def test_renaming_stores_it(received):
+    apartment_id = api.register_property("Ленина", has_hot_water=False)
+
+    api.rename_property(apartment_id, "Ленина 1", "Уфа, Ленина 1")
+
+    stored = api.get_property(apartment_id)
+    assert (stored.label, stored.address) == ("Ленина 1", "Уфа, Ленина 1")
+
+
+def test_saving_the_same_composition_announces_nothing(received):
+    """Сохранение формы без правок — не факт предметной области."""
+    apartment_id = api.register_property("Ленина", has_hot_water=False)
+    received.clear()
+
+    api.change_service_composition(
+        apartment_id, has_cold_water=True, has_hot_water=False,
+        has_sewage=True, gvs_heat_norm=Decimal("0"))
+
+    assert received == []
+
+
+def test_a_composition_change_does_not_touch_the_temporary_tenants():
+    apartment = _apartment(rent=Decimal("20000"), round_total=False)
+
+    api.change_service_composition(
+        apartment.pk, has_cold_water=False, has_hot_water=False,
+        has_sewage=False, gvs_heat_norm=Decimal("0"))
+
+    stored = Apartment.objects.get(pk=apartment.pk)
+    assert stored.rent == Decimal("20000")
+    assert stored.round_total is False
 
 
 # ------------------------------------------------------------------- команды

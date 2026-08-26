@@ -9,7 +9,8 @@ from decimal import Decimal
 import pytest
 
 from modules.properties.domain import (
-    Apartment, HeatNormMissing, ensure_heat_norm_is_set,
+    Apartment, HeatNormMissing, LabelMissing, ensure_heat_norm_is_set,
+    ensure_label_is_set,
 )
 
 JULY = date(2026, 7, 15)
@@ -131,3 +132,78 @@ def test_the_aggregate_asks_the_same_rule():
 
 def test_a_configured_aggregate_is_billable():
     _apartment().ensure_billable()
+
+
+# --------------------------------------------- наименование (инвариант 3)
+
+def test_a_label_is_required():
+    """Наименование — единственное, по чему владелец отличает одну квартиру от
+    другой в списке. Без него список превращается в набор безымянных строк."""
+    with pytest.raises(LabelMissing):
+        ensure_label_is_set("")
+
+
+def test_whitespace_is_not_a_label():
+    """Пробел проходит проверку «непустая строка», но в списке выглядит так же
+    пусто, как ничего."""
+    with pytest.raises(LabelMissing):
+        ensure_label_is_set("   ")
+
+
+def test_none_is_not_a_label():
+    with pytest.raises(LabelMissing):
+        ensure_label_is_set(None)
+
+
+def test_a_real_label_passes():
+    ensure_label_is_set("Ленина")
+
+
+def test_the_refusal_shows_what_a_label_looks_like():
+    with pytest.raises(LabelMissing) as refusal:
+        ensure_label_is_set("")
+
+    assert "студия у метро" in str(refusal.value)
+
+
+# ------------------------------------------------- переименование и состав
+
+def test_renaming_trims_the_edges():
+    renamed = _apartment().rename("  Ленина  ", "  Уфа, Ленина 1  ")
+
+    assert (renamed.label, renamed.address) == ("Ленина", "Уфа, Ленина 1")
+
+
+def test_renaming_to_nothing_is_refused():
+    with pytest.raises(LabelMissing):
+        _apartment().rename("", "Уфа, Ленина 1")
+
+
+def test_the_address_may_stay_empty():
+    """У владельца двух квартир адрес в голове, и требовать его ради
+    формальности значит мешать."""
+    renamed = _apartment().rename("Ленина", "")
+
+    assert renamed.address == ""
+
+
+def test_changing_the_composition_keeps_the_name():
+    changed = _apartment().change_service_composition(
+        has_cold_water=True, has_hot_water=False, has_sewage=False,
+        gvs_heat_norm=Decimal("0"))
+
+    assert changed.label == "кв. 1"
+    assert (changed.has_hot_water, changed.has_sewage) == (False, False)
+
+
+def test_connecting_hot_water_without_a_norm_is_refused():
+    """Провели горячую воду — обязан появиться и норматив, иначе объект начнёт
+    молча недоначислять за подогрев (дефект №29)."""
+    without_hot_water = Apartment(
+        apartment_id=1, label="кв", has_cold_water=True, has_hot_water=False,
+        has_sewage=True, gvs_heat_norm=Decimal("0"))
+
+    with pytest.raises(HeatNormMissing):
+        without_hot_water.change_service_composition(
+            has_cold_water=True, has_hot_water=True, has_sewage=True,
+            gvs_heat_norm=Decimal("0"))

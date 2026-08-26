@@ -283,3 +283,77 @@ def test_recommissioning_from_the_admin_announces_it(admin_client):
         assert [e.apartment_id for e in received] == [a.pk]
     finally:
         clear_subscribers()
+
+
+# ------------------------- карточка объекта ходит через команды (шаг C3e)
+
+@pytest.mark.django_db(transaction=True)
+def test_adding_an_apartment_through_the_admin_announces_it(admin_client):
+    """Карточка — единственный способ завести объект, и через обычный CRUD
+    объявленное событие не наступило бы никогда."""
+    from bus import clear_subscribers, subscribe
+    from modules.properties.events import PropertyRegistered
+
+    clear_subscribers()
+    received = []
+    subscribe(PropertyRegistered, received.append)
+    try:
+        resp = admin_client.post("/admin/properties/apartment/add/", {
+            "label": "Ленина", "address": "Уфа, Ленина 1",
+            "has_cold_water": "on", "has_sewage": "on",
+            "gvs_heat_norm": "0", "round_total": "on",
+            "rent": "20000", "internet": "700", "other_fixed": "0",
+        })
+
+        assert resp.status_code == 302
+        assert [e.label for e in received] == ["Ленина"]
+    finally:
+        clear_subscribers()
+
+
+def test_the_temporary_tenants_survive_the_command(admin_client):
+    """Форма показывает поля трёх модулей сразу. Команда пишет своё, остаток
+    дописывается следом — и не должен потеряться по дороге."""
+    admin_client.post("/admin/properties/apartment/add/", {
+        "label": "Ленина", "address": "", "has_cold_water": "on",
+        "has_sewage": "on", "gvs_heat_norm": "0", "round_total": "on",
+        "rent": "20000", "internet": "700", "other_fixed": "0",
+    })
+
+    stored = Apartment.objects.get()
+    assert stored.rent == Decimal("20000.00")
+    assert stored.internet == Decimal("700.00")
+    assert stored.round_total is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_changing_the_composition_from_the_admin_announces_it(admin_client):
+    from bus import clear_subscribers, subscribe
+    from modules.properties.events import PropertyServiceCompositionChanged
+
+    a = Apartment.objects.create(label="Ленина", has_hot_water=False)
+    clear_subscribers()
+    received = []
+    subscribe(PropertyServiceCompositionChanged, received.append)
+    try:
+        admin_client.post(f"/admin/properties/apartment/{a.pk}/change/", {
+            "label": "Ленина", "address": "", "has_cold_water": "on",
+            "has_hot_water": "on", "has_sewage": "on",
+            "gvs_heat_norm": "0.05229", "round_total": "on",
+            "rent": "0", "internet": "0", "other_fixed": "0",
+        })
+
+        assert [(e.was_hot_water, e.now_hot_water) for e in received] == [(False, True)]
+    finally:
+        clear_subscribers()
+
+
+def test_an_apartment_without_a_label_is_refused_by_the_form(admin_client):
+    resp = admin_client.post("/admin/properties/apartment/add/", {
+        "label": "", "address": "", "has_cold_water": "on",
+        "gvs_heat_norm": "0", "round_total": "on",
+        "rent": "0", "internet": "0", "other_fixed": "0",
+    })
+
+    assert resp.status_code == 200          # форма вернулась с ошибкой
+    assert Apartment.objects.count() == 0

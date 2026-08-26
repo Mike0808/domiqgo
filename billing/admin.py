@@ -25,8 +25,40 @@ class ApartmentAdmin(admin.ModelAdmin):
     list_display = ("label", "service_state", "meters_to_register",
                     "rent", "internet")
     list_filter = ("decommissioned_on",)
-    search_fields = ("label",)
+    search_fields = ("label", "address")
     actions = ["decommission_properties", "recommission_properties"]
+
+    #: Поля, которыми Properties не владеет: условия договора ждут Tenancy,
+    #: политика округления — Billing. Форма правит их напрямую, потому что
+    #: команды на чужое добро у модуля нет и быть не должно.
+    TEMPORARY_TENANTS = ("rent", "internet", "other_fixed", "round_total")
+
+    def save_model(self, request, obj, form, change):
+        """Объект заводится и правится командами модуля.
+
+        Иначе `PropertyRegistered` и `PropertyServiceCompositionChanged` не
+        наступят никогда: карточка объекта — единственный способ его завести.
+        Тот же урок, что с тарифами на C1a и приборами на C2f.
+
+        Форма показывает поля трёх модулей сразу, и разделить экран можно
+        будет только после того, как временные жильцы разъедутся по
+        владельцам. До тех пор шов проходит здесь: команда пишет своё, а
+        остаток дописывается следом.
+        """
+        if not change:
+            obj.pk = properties.register_property(
+                label=obj.label, address=obj.address,
+                has_cold_water=obj.has_cold_water,
+                has_hot_water=obj.has_hot_water, has_sewage=obj.has_sewage,
+                gvs_heat_norm=obj.gvs_heat_norm)
+        else:
+            if {"label", "address"} & set(form.changed_data):
+                properties.rename_property(obj.pk, obj.label, obj.address)
+            properties.change_service_composition(
+                obj.pk, obj.has_cold_water, obj.has_hot_water,
+                obj.has_sewage, obj.gvs_heat_norm)
+        Apartment.objects.filter(pk=obj.pk).update(
+            **{field: getattr(obj, field) for field in self.TEMPORARY_TENANTS})
 
     def has_delete_permission(self, request, obj=None):
         """Удаления объекта нет — есть вывод из эксплуатации.

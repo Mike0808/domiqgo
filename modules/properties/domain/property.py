@@ -19,6 +19,24 @@ from datetime import date
 from decimal import Decimal
 
 
+class LabelMissing(ValueError):
+    """У объекта нет наименования.
+
+    Инвариант 3 спецификации: наименование — единственное, по чему владелец
+    отличает одну квартиру от другой в интерфейсе. Объект без него превращает
+    список в набор безымянных строк, а выпадающий список выбора — в загадку.
+    Адрес этой роли не играет: он нужен отчёту, а не глазу, и у двух квартир в
+    одном доме совпадает.
+    """
+
+
+def ensure_label_is_set(label: str) -> None:
+    if not (label or "").strip():
+        raise LabelMissing(
+            "У объекта должно быть наименование — то, как вы называете его "
+            "между собой: «Ленина», «студия у метро».")
+
+
 class HeatNormMissing(ValueError):
     """К объекту подведена горячая вода, а норматив подогрева не задан.
 
@@ -63,6 +81,10 @@ class Apartment:
     has_hot_water: bool
     has_sewage: bool
     gvs_heat_norm: Decimal
+    #: Почтовый адрес одной строкой — то, что печатается в отчёте бухгалтеру.
+    #: Не обязателен: у владельца двух квартир он в голове, и требовать его
+    #: при заведении объекта значит мешать ради формальности.
+    address: str = ""
     decommissioned_on: date | None = None
 
     @property
@@ -94,6 +116,29 @@ class Apartment:
         решение «поэтому счёт не считается» — счёту.
         """
         ensure_heat_norm_is_set(self.has_hot_water, self.gvs_heat_norm)
+
+    def rename(self, label: str, address: str) -> "Apartment":
+        """Изменить наименование или адрес.
+
+        Наименование проверяется, адрес — нет: первое видит владелец в списке,
+        второе печатается в отчёте, и пустой адрес там не ошибка, а «не
+        заполнено».
+        """
+        ensure_label_is_set(label)
+        return replace(self, label=label.strip(), address=address.strip())
+
+    def change_service_composition(self, has_cold_water: bool,
+                                   has_hot_water: bool, has_sewage: bool,
+                                   gvs_heat_norm) -> "Apartment":
+        """Изменить состав подведённых услуг и норматив подогрева.
+
+        Провели горячую воду — обязан появиться и норматив: иначе объект
+        начнёт молча недоначислять за подогрев, чем и был дефект №29.
+        """
+        ensure_heat_norm_is_set(has_hot_water, gvs_heat_norm)
+        return replace(self, has_cold_water=has_cold_water,
+                       has_hot_water=has_hot_water, has_sewage=has_sewage,
+                       gvs_heat_norm=gvs_heat_norm)
 
     def recommission(self) -> "Apartment":
         """Вернуть в эксплуатацию.
