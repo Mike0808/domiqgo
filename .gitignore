@@ -2,8 +2,13 @@
 __pycache__/
 *.pyc
 db.sqlite3
+db.sqlite3.before-*
 .env
 .backup.env
 media/
 staticfiles/
 tools/
+logs/
+# Инструментальные каталоги помощника: к проекту не относятся.
+.claude/
+.superpowers/
