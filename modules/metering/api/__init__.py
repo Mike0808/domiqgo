@@ -12,9 +12,14 @@
 | `SubmitReadings` | `submit_readings` |
 | `RegisterMeter` | `register_meter` |
 | `CorrectReading` | `correct_reading` |
+| `ClosePeriod` | `close_period` |
+| `ReopenPeriod` | `reopen_period` |
+| `IsPeriodOpen(apartment_id, period)` | `is_period_open` |
 
-**Чего здесь пока нет.** Команды `ClosePeriod` и `ReopenPeriod` появятся на
-C2g вместе с замком периода.
+**Замок периода заведён, но не ставится.** `close_period` зовёт Billing в
+момент выставления счёта, а такого момента у счёта ещё нет — он появляется на
+шаге **E4** (нарушение №35). До тех пор закрытых периодов не бывает, и
+инвариант, хотя и действует, ни на что не влияет.
 
 **События объявлены, подписчиков нет.** Пересчёт счёта после сдачи показаний
 делает вызывающий, синхронно; перевод его на подписку — часть шага **E4**, где
@@ -32,7 +37,8 @@ from decimal import Decimal
 from ..application import commands, queries
 from ..domain.catalogue import RESOURCES, UNITS, UnknownResource
 from ..domain.point import (
-    BaselineMissing, Consumption, ReadingNotFound, ReadingWentBackwards,
+    BaselineMissing, Consumption, PeriodClosed, ReadingNotFound,
+    ReadingWentBackwards,
 )
 
 
@@ -72,6 +78,15 @@ def get_consumption(apartment_id: int, period: date, resources) -> dict:
     шага C2d живут здесь.
     """
     return queries.consumption(_repository(), apartment_id, period, resources)
+
+
+def is_period_open(apartment_id: int, period: date) -> bool:
+    """Можно ли сдавать показания за этот период.
+
+    Нужен интерфейсу ввода: спрашивать значение и отказывать после — хуже,
+    чем сразу показать, что месяц закрыт.
+    """
+    return period not in _repository().closed_periods(apartment_id)
 
 
 def has_meters(apartment_id: int) -> bool:
@@ -123,11 +138,26 @@ def correct_reading(apartment_id: int, period: date, resource: str,
                              value)
 
 
+def close_period(apartment_id: int, period: date) -> None:
+    """Объявить период закрытым для изменений.
+
+    Зовёт Billing, выставляя счёт ([ADR-0012](../../../docs/architecture/adr/0012-metering-period-lock.md)).
+    Сегодня не зовёт никто: момент предъявления счёта появляется на шаге E4.
+    """
+    commands.close_period(_repository(), apartment_id, period)
+
+
+def reopen_period(apartment_id: int, period: date) -> None:
+    """Снять замок закрытого периода — чтобы исправить ошибку."""
+    commands.reopen_period(_repository(), apartment_id, period)
+
+
 __all__ = [
     "UnknownResource",
     "Consumption", "BaselineMissing", "ReadingNotFound",
-    "ReadingWentBackwards",
+    "ReadingWentBackwards", "PeriodClosed",
     "get_expected_meters", "get_readings", "get_consumption",
-    "has_meters", "has_readings", "resources", "units",
+    "has_meters", "has_readings", "is_period_open", "resources", "units",
     "register_meter", "submit_readings", "correct_reading",
+    "close_period", "reopen_period",
 ]

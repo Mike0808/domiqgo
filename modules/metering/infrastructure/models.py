@@ -55,3 +55,25 @@ class MeterReading(models.Model):
 
     def __str__(self):
         return f"кв. {self.apartment_id} {self.period:%Y-%m} {self.resource}={self.value}"
+
+
+class PeriodLock(models.Model):
+    """Период точки учёта, объявленный закрытым.
+
+    Хранится строкой на закрытый период, а не флагом на показании: закрыт
+    период целиком, включая приборы, по которым показаний ещё нет.
+    """
+
+    apartment_id = models.PositiveIntegerField("Квартира", db_index=True)
+    period = models.DateField("Период")
+    closed_at = models.DateTimeField("Закрыт", auto_now_add=True)
+
+    class Meta:
+        db_table = "metering_period_lock"
+        verbose_name = "Закрытый период"
+        verbose_name_plural = "Закрытые периоды"
+        unique_together = [("apartment_id", "period")]
+        ordering = ["-period"]
+
+    def __str__(self):
+        return f"кв. {self.apartment_id} {self.period:%Y-%m} закрыт"

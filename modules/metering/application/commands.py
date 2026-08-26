@@ -10,9 +10,10 @@ from decimal import Decimal
 from bus import publish
 
 from ..domain.catalogue import ensure_known
-from ..domain.point import ReadingNotFound
+from ..domain.point import ReadingNotFound, ensure_period_open
 from ..events import (
     MeterReadingCorrected, MeterReadingsSubmitted, MeterRegistered,
+    MeteringPeriodReopened,
 )
 from .ports import MeteringRepository
 
@@ -51,6 +52,7 @@ def submit_readings(repository: MeteringRepository, apartment_id: int,
     """
     for resource in values:
         ensure_known(resource)
+    ensure_period_open(period, repository.closed_periods(apartment_id))
     repository.store_readings(apartment_id, period, values, entered_by_tenant)
     if not values:
         return
@@ -73,6 +75,7 @@ def correct_reading(repository: MeteringRepository, apartment_id: int,
     сдача.
     """
     ensure_known(resource)
+    ensure_period_open(period, repository.closed_periods(apartment_id))
     previous = repository.readings_at(apartment_id, period).get(resource)
     if previous is None:
         raise ReadingNotFound(
@@ -84,3 +87,33 @@ def correct_reading(repository: MeteringRepository, apartment_id: int,
         apartment_id=apartment_id, period=period, resource=resource,
         previous_value=previous, new_value=value,
     ))
+
+
+def close_period(repository: MeteringRepository, apartment_id: int,
+                 period: date) -> None:
+    """Объявить период закрытым для изменений.
+
+    Команду зовёт Billing, выставляя счёт: предъявленный документ не должен
+    расходиться с данными, из которых получен. События нет намеренно —
+    Billing сам её и вызвал, сообщать ему о последствии собственного решения
+    незачем.
+
+    Повторное закрытие проходит молча: команда описывает желаемое состояние,
+    а не переход, и второй счёт за тот же период не должен падать.
+    """
+    repository.close_period(apartment_id, period)
+
+
+def reopen_period(repository: MeteringRepository, apartment_id: int,
+                  period: date) -> None:
+    """Снять замок, чтобы исправить ошибку.
+
+    Ручное вмешательство в закрытый месяц, и след такой операции нужен
+    независимо от того, слушает ли событие сегодня кто-нибудь. Без этой
+    команды первая же опечатка в показаниях превращалась бы в тупик
+    (требование 3 ADR-0012).
+
+    Снятие несуществующего замка не объявляется: ничего не произошло.
+    """
+    if repository.reopen_period(apartment_id, period):
+        publish(MeteringPeriodReopened(apartment_id=apartment_id, period=period))

@@ -9,7 +9,9 @@ from django.contrib import admin
 from django.contrib import messages
 from django.utils.html import format_html
 from modules.metering import api as metering
-from modules.metering.infrastructure.models import Meter, MeterReading
+from modules.metering.infrastructure.models import (
+    Meter, MeterReading, PeriodLock,
+)
 from .models import (
     Apartment, Tenant, MonthlyStatement, Document, Payment,
 )
@@ -95,6 +97,41 @@ class MeterAdmin(admin.ModelAdmin):
                    .order_by("-pk").first())
         if written is not None:
             obj.pk = written.pk
+
+@admin.register(PeriodLock)
+class PeriodLockAdmin(admin.ModelAdmin):
+    """Закрытые периоды — и способ снять замок.
+
+    Требование 3 [ADR-0012](../docs/architecture/adr/0012-metering-period-lock.md):
+    у владельца должен быть доступный способ снять замок, иначе первая же
+    опечатка в показаниях превращается в тупик. Снятие идёт командой модуля, а
+    не удалением строки: иначе `MeteringPeriodReopened` не наступит, а след
+    ручного вмешательства в закрытый месяц нужен независимо от того, слушает ли
+    его сегодня кто-нибудь.
+
+    Заводить замок отсюда нельзя: его ставит Billing, выставляя счёт. Ручное
+    закрытие периода было бы решением без документа, из-за которого оно
+    принимается.
+    """
+
+    list_display = ("apartment_label", "period", "closed_at")
+    date_hierarchy = "period"
+
+    @admin.display(description="Квартира", ordering="apartment_id")
+    def apartment_label(self, obj):
+        apartment = Apartment.objects.filter(pk=obj.apartment_id).first()
+        return apartment.label if apartment else f"— (id {obj.apartment_id})"
+
+    def has_add_permission(self, request):
+        return False
+
+    def delete_model(self, request, obj):
+        metering.reopen_period(obj.apartment_id, obj.period)
+
+    def delete_queryset(self, request, queryset):
+        for obj in queryset:
+            metering.reopen_period(obj.apartment_id, obj.period)
+
 
 class DocumentInline(admin.TabularInline):
     model = Document

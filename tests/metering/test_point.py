@@ -4,18 +4,22 @@
 доказательство, что он таким и получился. Появление здесь фикстуры `db` будет
 означать, что правило утекло в инфраструктуру.
 
-Оба правила приехали шагом C2d из `billing/services/`: база отсчёта — из
-`statements._previous_readings`, монотонность — из `calculation._consumption`,
-то есть из середины расчёта счёта. Тест на монотонность переехал сюда из
-`billing/tests/test_calculation.py` тем же шагом.
+База отсчёта и монотонность приехали шагом C2d из `billing/services/`:
+первая — из `statements._previous_readings`, вторая — из
+`calculation._consumption`, то есть из середины расчёта счёта. Тест на
+монотонность переехал сюда из `billing/tests/test_calculation.py` тем же шагом.
+Замок периода добавлен на C2g — его в `billing/` не было вовсе: сегодняшняя
+блокировка ввода живёт в представлении и читает статус счёта.
 """
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
 
 from modules.metering.domain import (
-    BaselineMissing, MeteringPoint, ReadingWentBackwards,
+    BaselineMissing, MeteringPoint, PeriodClosed, ReadingWentBackwards,
+    ensure_period_open,
 )
 
 
@@ -184,3 +188,28 @@ def test_a_missing_baseline_is_reported_before_a_backward_reading():
 
     with pytest.raises(BaselineMissing):
         point.consumption(["cold_water", "hot_water"])
+
+
+# -------------------------------------------------------- замок периода
+
+def test_an_open_period_passes():
+    ensure_period_open(date(2026, 7, 1), set())
+
+
+def test_a_closed_period_is_refused():
+    with pytest.raises(PeriodClosed):
+        ensure_period_open(date(2026, 7, 1), {date(2026, 7, 1)})
+
+
+def test_only_the_named_period_is_closed():
+    """Замок ставится на период, а не на точку учёта целиком: закрытый июль не
+    должен запирать август."""
+    ensure_period_open(date(2026, 8, 1), {date(2026, 7, 1)})
+
+
+def test_the_refusal_names_the_period_and_the_way_out():
+    with pytest.raises(PeriodClosed) as refusal:
+        ensure_period_open(date(2026, 7, 1), {date(2026, 7, 1)})
+
+    assert "07.2026" in str(refusal.value)
+    assert "снимите замок" in str(refusal.value).lower()

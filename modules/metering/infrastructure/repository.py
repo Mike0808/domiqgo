@@ -110,3 +110,28 @@ def has_meters(apartment_id: int) -> bool:
 
 def has_readings(apartment_id: int) -> bool:
     return models.MeterReading.objects.filter(apartment_id=apartment_id).exists()
+
+
+def closed_periods(apartment_id: int) -> set:
+    """Закрытые периоды точки учёта.
+
+    Целиком, а не по одному: их единицы (один на выставленный счёт), и
+    правило домена проверяет вхождение, а не спрашивает базу.
+    """
+    return set(models.PeriodLock.objects
+               .filter(apartment_id=apartment_id)
+               .values_list("period", flat=True))
+
+
+def close_period(apartment_id: int, period: date) -> bool:
+    """Закрыть период. `False`, если он уже был закрыт."""
+    _, created = models.PeriodLock.objects.get_or_create(
+        apartment_id=apartment_id, period=period)
+    return created
+
+
+def reopen_period(apartment_id: int, period: date) -> bool:
+    """Снять замок. `False`, если периода среди закрытых не было."""
+    removed, _ = (models.PeriodLock.objects
+                  .filter(apartment_id=apartment_id, period=period).delete())
+    return bool(removed)

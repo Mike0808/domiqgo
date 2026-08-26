@@ -69,3 +69,17 @@ class MeterRegistered:
     serial_number: str
     initial_value: Decimal
     initial_date: date | None
+
+
+@dataclass(frozen=True)
+class MeteringPeriodReopened:
+    """Замок закрытого периода снят.
+
+    Закрытие периода события не порождает намеренно: его инициировал сам
+    Billing, и сообщать ему о последствии собственной команды незачем. Снятие
+    — наоборот, ручное вмешательство в закрытый месяц, и след такой операции
+    нужен независимо от того, слушает ли его сегодня кто-нибудь.
+    """
+
+    apartment_id: int
+    period: date
