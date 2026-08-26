@@ -63,6 +63,39 @@ class MeterAdmin(admin.ModelAdmin):
         apartment = Apartment.objects.filter(pk=obj.apartment_id).first()
         return apartment.label if apartment else f"— (id {obj.apartment_id})"
 
+    def save_model(self, request, obj, form, change):
+        """Ввод прибора в учёт идёт командой, а не `obj.save()`.
+
+        Иначе объявленное на C2f событие `MeterRegistered` не наступало бы
+        никогда: админка — единственный способ завести прибор. Тот же урок,
+        что с тарифами на C1a.
+
+        Правка уже заведённого прибора (номер, дата акта) остаётся обычным
+        сохранением: команды на это в спецификации нет, а замена счётчика —
+        отдельная операция со своим смыслом, и она отложена (P2).
+        """
+        if change:
+            super().save_model(request, obj, form, change)
+            return
+        metering.register_meter(
+            apartment_id=obj.apartment_id, resource=obj.resource,
+            initial_value=obj.initial_value, serial_number=obj.serial_number,
+            initial_date=obj.initial_date)
+        self._adopt_written_row(obj)
+
+    @staticmethod
+    def _adopt_written_row(obj):
+        """Подставить в форму ключ строки, которую записала команда.
+
+        Объект формы командой не сохранялся и ключа не имеет; админке он нужен,
+        чтобы построить ссылку «изменить» и сообщение об успехе.
+        """
+        written = (Meter.objects
+                   .filter(apartment_id=obj.apartment_id, resource=obj.resource)
+                   .order_by("-pk").first())
+        if written is not None:
+            obj.pk = written.pk
+
 class DocumentInline(admin.TabularInline):
     model = Document
     extra = 1
@@ -89,7 +122,20 @@ class MeterReadingAdmin(admin.ModelAdmin):
         return apartment.label if apartment else f"— (id {obj.apartment_id})"
 
     def save_model(self, request, obj, form, change):
-        super().save_model(request, obj, form, change)
+        """Сдача и исправление — разные операции с разными событиями.
+
+        Форма различает их по тому, редактируется ли запись: новая строка —
+        сдача показания, правка существующей — исправление ошибки. Смысл тот
+        же, что у Tariffs между публикацией и исправлением версии.
+        """
+        if change:
+            metering.correct_reading(obj.apartment_id, obj.period,
+                                     obj.resource, obj.value)
+        else:
+            metering.submit_readings(obj.apartment_id, obj.period,
+                                     {obj.resource: obj.value},
+                                     entered_by_tenant=obj.entered_by_tenant)
+        _adopt_reading_row(obj)
         try:
             apartment = Apartment.objects.get(pk=obj.apartment_id)
             generate_statement(apartment, obj.period)
@@ -118,6 +164,15 @@ def _warn_about_missing_meters(modeladmin, request, apartment):
         + ", ".join(names.get(code, code) for code in missing)
         + ". Эти услуги в счёт не попали.",
         level=messages.WARNING)
+
+
+def _adopt_reading_row(obj):
+    written = (MeterReading.objects
+               .filter(apartment_id=obj.apartment_id, period=obj.period,
+                       resource=obj.resource)
+               .order_by("-pk").first())
+    if written is not None:
+        obj.pk = written.pk
 
 
 @admin.action(description="Пересчитать начисления")

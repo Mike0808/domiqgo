@@ -17,6 +17,10 @@ class MeteringRepository(Protocol):
     def previous_values(self, apartment_id: int, resources,
                         period: date) -> dict[str, Decimal]: ...
 
+    def register_meter(self, apartment_id: int, resource: str,
+                       initial_value: Decimal, serial_number: str,
+                       initial_date: date | None) -> None: ...
+
     def store_readings(self, apartment_id: int, period: date,
                        values: dict[str, Decimal],
                        entered_by_tenant: bool) -> None: ...

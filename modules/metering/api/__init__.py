@@ -10,10 +10,15 @@
 | `GetReadings(apartment_id, period)` | `get_readings` |
 | `GetConsumption(apartment_id, period)` | `get_consumption` |
 | `SubmitReadings` | `submit_readings` |
+| `RegisterMeter` | `register_meter` |
+| `CorrectReading` | `correct_reading` |
 
-**Чего здесь пока нет.** Команды `RegisterMeter`, `CorrectReading`,
-`ClosePeriod`, `ReopenPeriod` появятся на C2f и C2g вместе с событиями и
-замком периода.
+**Чего здесь пока нет.** Команды `ClosePeriod` и `ReopenPeriod` появятся на
+C2g вместе с замком периода.
+
+**События объявлены, подписчиков нет.** Пересчёт счёта после сдачи показаний
+делает вызывающий, синхронно; перевод его на подписку — часть шага **E4**, где
+счёт перестаёт возникать сам собой. Подробности — в `events/`.
 
 **Это точка сборки модуля.** Правило 3.5 запрещает `application/` обращаться
 к `infrastructure/`, поэтому реализацию хранилища подставляет сюда `api/`.
@@ -27,7 +32,7 @@ from decimal import Decimal
 from ..application import commands, queries
 from ..domain.catalogue import RESOURCES, UNITS, UnknownResource
 from ..domain.point import (
-    BaselineMissing, Consumption, ReadingWentBackwards,
+    BaselineMissing, Consumption, ReadingNotFound, ReadingWentBackwards,
 )
 
 
@@ -91,6 +96,14 @@ def units() -> dict[str, str]:
 
 # ------------------------------------------------------------------- команды
 
+def register_meter(apartment_id: int, resource: str, initial_value: Decimal,
+                   serial_number: str = "",
+                   initial_date: date | None = None) -> None:
+    """Ввести прибор в учёт: вид ресурса, номер, начальное показание."""
+    commands.register_meter(_repository(), apartment_id, resource,
+                            initial_value, serial_number, initial_date)
+
+
 def submit_readings(apartment_id: int, period: date,
                     values: dict[str, Decimal],
                     entered_by_tenant: bool = False) -> None:
@@ -99,10 +112,22 @@ def submit_readings(apartment_id: int, period: date,
                              entered_by_tenant)
 
 
+def correct_reading(apartment_id: int, period: date, resource: str,
+                    value: Decimal) -> None:
+    """Исправить ранее внесённое показание.
+
+    Отдельно от сдачи: сдача — ежемесячный ход событий, исправление —
+    признание ошибки в уже сданных данных. События тоже разные.
+    """
+    commands.correct_reading(_repository(), apartment_id, period, resource,
+                             value)
+
+
 __all__ = [
     "UnknownResource",
-    "Consumption", "BaselineMissing", "ReadingWentBackwards",
+    "Consumption", "BaselineMissing", "ReadingNotFound",
+    "ReadingWentBackwards",
     "get_expected_meters", "get_readings", "get_consumption",
     "has_meters", "has_readings", "resources", "units",
-    "submit_readings",
+    "register_meter", "submit_readings", "correct_reading",
 ]

@@ -71,6 +71,15 @@ def previous_values(apartment_id: int, resources,
     return found
 
 
+def register_meter(apartment_id: int, resource: str, initial_value: Decimal,
+                   serial_number: str = "",
+                   initial_date: date | None = None) -> None:
+    models.Meter.objects.create(
+        apartment_id=apartment_id, resource=resource,
+        initial_value=initial_value, serial_number=serial_number,
+        initial_date=initial_date)
+
+
 @transaction.atomic
 def store_readings(apartment_id: int, period: date, values: dict[str, Decimal],
                    entered_by_tenant: bool) -> None:

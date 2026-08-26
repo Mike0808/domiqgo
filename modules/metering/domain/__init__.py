@@ -10,10 +10,12 @@
 
 from .catalogue import RESOURCES, UNITS, UnknownResource, ensure_known
 from .point import (
-    BaselineMissing, Consumption, MeteringPoint, ReadingWentBackwards,
+    BaselineMissing, Consumption, MeteringPoint, ReadingNotFound,
+    ReadingWentBackwards,
 )
 
 __all__ = [
     "RESOURCES", "UNITS", "UnknownResource", "ensure_known",
-    "MeteringPoint", "Consumption", "BaselineMissing", "ReadingWentBackwards",
+    "MeteringPoint", "Consumption",
+    "BaselineMissing", "ReadingNotFound", "ReadingWentBackwards",
 ]

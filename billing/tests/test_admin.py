@@ -111,3 +111,58 @@ def test_recalculating_warns_about_meters_that_are_not_registered(admin_client):
     page = resp.content.decode()
     assert "не заведены приборы" in page
     assert "в счёт не попали" in page
+
+
+# ------------------------- админка ходит через команды модуля (шаг C2f)
+
+@pytest.mark.django_db(transaction=True)
+def test_adding_a_meter_through_the_admin_announces_it(admin_client):
+    """Админка — единственный способ завести прибор, и через обычный CRUD
+    объявленное событие не наступало бы никогда. Тот же урок, что с тарифами
+    на шаге C1a."""
+    from bus import clear_subscribers, subscribe
+    from modules.metering.events import MeterRegistered
+
+    clear_subscribers()
+    received = []
+    subscribe(MeterRegistered, received.append)
+    try:
+        a = Apartment.objects.create(label="кв")
+        resp = admin_client.post("/admin/metering/meter/add/", {
+            "apartment_id": str(a.pk), "resource": "cold_water",
+            "serial_number": "CW-1", "initial_value": "100",
+            "initial_date": "",
+        })
+
+        assert resp.status_code == 302
+        assert [e.resource for e in received] == ["cold_water"]
+        assert Meter.objects.count() == 1
+    finally:
+        clear_subscribers()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_editing_a_reading_through_the_admin_announces_a_correction(admin_client):
+    from bus import clear_subscribers, subscribe
+    from modules.metering.events import MeterReadingCorrected
+
+    clear_subscribers()
+    received = []
+    subscribe(MeterReadingCorrected, received.append)
+    try:
+        a = Apartment.objects.create(label="кв", has_hot_water=False,
+                                     has_sewage=False)
+        reading = MeterReading.objects.create(
+            apartment_id=a.pk, period=date(2026, 7, 1), resource="cold_water",
+            value=Decimal("110"))
+
+        admin_client.post(f"/admin/metering/meterreading/{reading.pk}/change/", {
+            "apartment_id": str(a.pk), "period": "2026-07-01",
+            "resource": "cold_water", "value": "115",
+        })
+
+        assert [(e.previous_value, e.new_value) for e in received] == [
+            (Decimal("110.000"), Decimal("115.000"))]
+        assert MeterReading.objects.get().value == Decimal("115.000")
+    finally:
+        clear_subscribers()
