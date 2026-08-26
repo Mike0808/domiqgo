@@ -166,3 +166,64 @@ def test_editing_a_reading_through_the_admin_announces_a_correction(admin_client
         assert MeterReading.objects.get().value == Decimal("115.000")
     finally:
         clear_subscribers()
+
+
+# ------------------- вывод из эксплуатации вместо удаления (шаг C3a)
+
+def test_the_apartment_list_offers_no_delete_action(admin_client):
+    """Кнопки удаления нет вовсе: владелец не должен упираться в отказ уже
+    после подтверждения."""
+    Apartment.objects.create(label="кв. 10")
+
+    page = admin_client.get("/admin/billing/apartment/").content.decode()
+
+    assert "delete_selected" not in page
+    assert "Вывести из эксплуатации" in page
+
+
+def test_the_change_form_offers_no_delete_button(admin_client):
+    a = Apartment.objects.create(label="кв. 10")
+
+    page = admin_client.get(f"/admin/billing/apartment/{a.pk}/change/").content.decode()
+
+    assert "Удалить" not in page
+
+
+def test_the_action_decommissions_and_warns_about_contracts(admin_client):
+    """Действующий договор выводом не прекращается (ADR-0009), и владельцу об
+    этом говорят: система не вправе отменять юридический факт из-за
+    административной отметки."""
+    a = Apartment.objects.create(label="кв. 10")
+
+    resp = admin_client.post("/admin/billing/apartment/", {
+        "action": "decommission_properties",
+        "_selected_action": [str(a.pk)],
+    }, follow=True)
+
+    a.refresh_from_db()
+    assert a.in_service is False
+    page = resp.content.decode()
+    assert "Выведено из эксплуатации: 1" in page
+    assert "договоры не прекращены" in page
+
+
+def test_the_action_returns_a_property_to_service(admin_client):
+    a = Apartment.objects.create(label="кв. 10")
+    a.decommission()
+
+    admin_client.post("/admin/billing/apartment/", {
+        "action": "recommission_properties",
+        "_selected_action": [str(a.pk)],
+    }, follow=True)
+
+    a.refresh_from_db()
+    assert a.in_service is True
+
+
+def test_the_list_shows_the_service_state(admin_client):
+    a = Apartment.objects.create(label="кв. 10")
+    a.decommission(date(2026, 7, 15))
+
+    page = admin_client.get("/admin/billing/apartment/").content.decode()
+
+    assert "выведен 15.07.2026" in page

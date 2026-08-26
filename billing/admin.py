@@ -20,10 +20,44 @@ from .services.intake import confirm_payment, reject_payment, _revert_if_no_pend
 
 @admin.register(Apartment)
 class ApartmentAdmin(admin.ModelAdmin):
-    list_display = ("label", "meters_to_register", "electricity_meter_type",
-                    "rent", "internet")
-    list_filter = ("electricity_meter_type",)
+    list_display = ("label", "service_state", "meters_to_register",
+                    "electricity_meter_type", "rent", "internet")
+    list_filter = ("electricity_meter_type", "decommissioned_on")
     search_fields = ("label",)
+    actions = ["decommission_properties", "recommission_properties"]
+
+    def has_delete_permission(self, request, obj=None):
+        """Удаления объекта нет — есть вывод из эксплуатации.
+
+        Кнопка убрана здесь, а не только в модели, чтобы владелец не упирался
+        в отказ после подтверждения: операции просто нет
+        ([ADR-0009](../docs/architecture/adr/0009-property-decommission-and-active-tenancy.md)).
+        """
+        return False
+
+    @admin.action(description="Вывести из эксплуатации")
+    def decommission_properties(self, request, queryset):
+        count = queryset.count()
+        for apartment in queryset:
+            apartment.decommission()
+        self.message_user(
+            request,
+            f"Выведено из эксплуатации: {count}. История по этим объектам "
+            "сохранена; действующие договоры не прекращены.",
+            level=messages.WARNING)
+
+    @admin.action(description="Вернуть в эксплуатацию")
+    def recommission_properties(self, request, queryset):
+        count = queryset.count()
+        for apartment in queryset:
+            apartment.recommission()
+        self.message_user(request, f"Возвращено в эксплуатацию: {count}.")
+
+    @admin.display(description="Эксплуатация", ordering="decommissioned_on")
+    def service_state(self, obj):
+        if obj.in_service:
+            return "действует"
+        return f"выведен {obj.decommissioned_on:%d.%m.%Y}"
 
     @admin.display(description="Не заведены приборы")
     def meters_to_register(self, obj):
