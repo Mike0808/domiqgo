@@ -115,9 +115,9 @@ def media_file(request, path):
 
 @login_required
 def oauth_connections(request):
-    tenant = _tenant_for(request)
-    if tenant is None:
-        return _no_tenant_response(request)
+    # Профиль жильца здесь не нужен: согласие и способы входа принадлежат
+    # учётной записи (шаг C4a), и экран открыт любой из них — в том числе
+    # владельцу, у которого профиля жильца нет (дефект №33, шаг C4b).
     form = ConsentForm(request.POST) if request.method == "POST" else ConsentForm()
     if request.method == "POST":
         if form.is_valid():

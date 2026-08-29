@@ -3,11 +3,12 @@
 | Пункт | Что зафиксировано                                     | Кто перепишет |
 |-------|-------------------------------------------------------|---------------|
 | №31   | на одну квартиру можно завести нескольких жильцов      | D3            |
-| №33   | владелец не может подключить себе OAuth — ходит по кругу | C4          |
+| №33   | ~~владелец не может подключить себе OAuth~~ → согласие принадлежит учётной записи, владелец подключает провайдера сам | **исправлен C4b** |
 
-№33 — тест на дефект: он закрепляет поломку, а не правило. Чинится тем же
-шагом, который переносит согласие с жильца на учётную запись; если C4
-откладывается, дефект чинится отдельно и раньше.
+№33 был тестом на дефект: он закреплял поломку, а не правило. C4a перенёс
+согласие с жильца на учётную запись, C4b убрал проверку профиля жильца из
+адаптера и с экрана подключений — оба теста переписаны на рабочий сценарий
+тем же коммитом.
 """
 
 from datetime import date
@@ -19,7 +20,9 @@ from django.contrib.auth.models import User
 from django.test import Client, RequestFactory
 
 from billing.adapters import NoSignupSocialAccountAdapter
+from billing.consent import PRIVACY_POLICY_VERSION
 from billing.models import Apartment, MonthlyStatement, Tenant
+from modules.identity import api as identity
 
 pytestmark = [pytest.mark.django_db, pytest.mark.characterization]
 
@@ -68,14 +71,15 @@ def test_two_tenants_of_one_apartment_each_have_their_own_access():
 
 
 # --------------------------------------------------------------------------
-# №33 — круг, из которого владельцу не выйти. Переписывает шаг C4.
+# №33 — владелец подключает провайдера сам. Исправлен шагом C4b.
 # --------------------------------------------------------------------------
 
-def test_owner_attaching_a_provider_is_sent_to_the_consent_screen():
-    """Первая половина круга: согласие ищется через профиль жильца.
+def test_owner_without_consent_is_sent_to_the_consent_screen():
+    """Половина правила: без согласия провайдера не привязать никому.
 
-    У владельца профиля жильца нет, поэтому адаптер считает согласие
-    отсутствующим и отправляет его на экран подключений.
+    Владелец, как и жилец, отправляется на экран подключений — но уже не
+    потому, что у него нет профиля жильца, а потому, что согласия нет в
+    журнале учётной записи.
     """
     owner = User.objects.create_superuser("boss", "boss@example.com", "pass12345")
     adapter = NoSignupSocialAccountAdapter()
@@ -87,17 +91,20 @@ def test_owner_attaching_a_provider_is_sent_to_the_consent_screen():
     assert raised.value.response.headers["Location"] == "/connections/"
 
 
-def test_consent_screen_bounces_the_owner_to_the_admin():
-    """Вторая половина круга: экран подключений для пользователя без профиля
-    жильца немедленно уходит в админку — дать согласие негде.
-
-    Вместе с предыдущим тестом это замкнутый круг: подключить провайдера
-    владелец не может никаким путём. После C4 согласие принадлежит учётной
-    записи, экран открывается, и оба теста переписываются на рабочий сценарий.
+def test_consent_screen_opens_for_the_owner_and_records_consent():
+    """Вторая половина: экран подключений открывается для любой учётной
+    записи, а не только для жильца. Круг разомкнут — владелец даёт согласие
+    и после этого адаптер пропускает привязку провайдера.
     """
-    User.objects.create_superuser("boss", "boss@example.com", "pass12345")
+    owner = User.objects.create_superuser("boss", "boss@example.com", "pass12345")
+    client = _login("boss")
 
-    response = _login("boss").get("/connections/")
+    screen = client.get("/connections/")
+    assert screen.status_code == 200
+    assert "form" in screen.context  # экран согласия, не редирект в админку
 
-    assert response.status_code == 302
-    assert response.headers["Location"].startswith("/admin/")
+    assert client.post("/connections/", {"consent": "on"}).status_code == 302
+    assert identity.has_current_consent(owner.pk, PRIVACY_POLICY_VERSION)
+
+    adapter = NoSignupSocialAccountAdapter()
+    adapter.pre_social_login(_request(owner), _FakeSocialLogin(is_existing=False))
