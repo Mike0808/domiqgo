@@ -16,8 +16,9 @@ def test_generate_code_is_non_empty_and_saved():
     t = _tenant()
     code = generate_link_code(t)
     assert code
-    t.refresh_from_db()
-    assert t.link_code == code
+    # Код хранит Identity, а не профиль жильца (C4c); подтверждает его только
+    # погашение, и оно же его расходует.
+    assert link_chat("telegram", 1, code).pk == t.pk
 
 def test_link_binds_chat_and_is_single_use():
     t = _tenant()
@@ -27,12 +28,11 @@ def test_link_binds_chat_and_is_single_use():
     t.refresh_from_db()
     assert t.messenger_platform == "telegram"
     assert t.messenger_chat_id == "12345"
-    assert t.link_code == ""                      # consumed
     with pytest.raises(InvalidLinkCodeError):     # cannot reuse
         link_chat("telegram", 999, code)
 
 def test_empty_code_rejected_and_matches_nobody():
-    _tenant("a")   # has blank link_code by default
+    _tenant("a")   # без выпущенного кода
     with pytest.raises(InvalidLinkCodeError):
         link_chat("telegram", 1, "")
 

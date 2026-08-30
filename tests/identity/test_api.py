@@ -110,3 +110,43 @@ def test_a_consent_crosses_the_border_without_django():
     entry = api.consent_history(ACCOUNT)[0]
 
     assert not hasattr(entry, "save")
+
+
+# ------------------------------------------------------------ код привязки
+
+def test_a_redeemed_code_names_its_account():
+    code = api.issue_link_code(ACCOUNT)
+
+    assert api.redeem_link_code(code) == ACCOUNT
+
+
+def test_a_code_is_single_use():
+    """Инвариант 5: при погашении код перестаёт действовать."""
+    code = api.issue_link_code(ACCOUNT)
+    api.redeem_link_code(code)
+
+    with pytest.raises(api.InvalidLinkCodeError):
+        api.redeem_link_code(code)
+
+
+def test_reissuing_retires_the_previous_code():
+    """У записи один действующий код: потерянный код не должен остаться
+    действующим после выпуска нового."""
+    first = api.issue_link_code(ACCOUNT)
+    second = api.issue_link_code(ACCOUNT)
+
+    with pytest.raises(api.InvalidLinkCodeError):
+        api.redeem_link_code(first)
+    assert api.redeem_link_code(second) == ACCOUNT
+
+
+def test_an_unknown_or_blank_code_is_rejected():
+    for raw in ("does-not-exist", "", None):
+        with pytest.raises(api.InvalidLinkCodeError):
+            api.redeem_link_code(raw)
+
+
+def test_a_presented_code_survives_surrounding_whitespace():
+    code = api.issue_link_code(ACCOUNT)
+
+    assert api.redeem_link_code(f"  {code} ") == ACCOUNT

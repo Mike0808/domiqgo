@@ -1,24 +1,27 @@
-import secrets
+"""Привязка чата мессенджера к жильцу.
+
+Код привязки уехал в `modules/identity/` шагом C4c: он доказывает личность,
+а не адрес доставки. Здесь осталась вторая половина — запись платформы и
+чата, — и она ждёт модуля Notifications (`BindChannel`, ADR-0017). Порядок
+уже целевой: сначала Identity говорит, чья это запись, потом привязывается
+канал.
+"""
+
+from modules.identity import api as identity
+
 from ..models import Tenant
 
-class InvalidLinkCodeError(Exception):
-    """The supplied link code was empty or matched no tenant."""
+InvalidLinkCodeError = identity.InvalidLinkCodeError
+
 
 def generate_link_code(tenant):
-    code = secrets.token_urlsafe(8)
-    tenant.link_code = code
-    tenant.save(update_fields=["link_code"])
-    return code
+    return identity.issue_link_code(tenant.user_id)
+
 
 def link_chat(platform, chat_id, code):
-    code = (code or "").strip()
-    if not code:
-        raise InvalidLinkCodeError("Неверный код.")
-    tenant = Tenant.objects.filter(link_code=code).first()
-    if tenant is None:
-        raise InvalidLinkCodeError("Неверный код.")
+    account_id = identity.redeem_link_code(code)
+    tenant = Tenant.objects.get(user_id=account_id)
     tenant.messenger_platform = platform
     tenant.messenger_chat_id = str(chat_id)
-    tenant.link_code = ""
-    tenant.save(update_fields=["messenger_platform", "messenger_chat_id", "link_code"])
+    tenant.save(update_fields=["messenger_platform", "messenger_chat_id"])
     return tenant

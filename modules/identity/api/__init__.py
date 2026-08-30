@@ -4,25 +4,29 @@
 |---|---|
 | `GrantPrivacyConsent` | `grant_privacy_consent` |
 | `HasCurrentConsent(account_id)` | `has_current_consent` |
+| `IssueLinkCode` | `issue_link_code` |
+| `RedeemLinkCode` | `redeem_link_code` |
 
 **Чего здесь пока нет.** `CreateAccount`, `LinkExternalIdentity`,
-`UnlinkExternalIdentity`, `ChangePassword`, `IssueLinkCode`, `RedeemLinkCode`,
-`SuspendAccount` и запрос `GetAccount` появятся на шагах **C4c** (код
-привязки), **C4d** (правила входа) и **C4e** (тип учётной записи). Шаг C4a
-переносит согласие и ничего больше: перенос кода и изменение поведения не
-совмещаются (правило 7.4), а согласие само по себе тянет за собой и то и
-другое.
+`UnlinkExternalIdentity`, `ChangePassword`, `SuspendAccount` и запрос
+`GetAccount` появятся на шагах **C4d** (правила входа) и **C4e** (тип
+учётной записи).
 
 **Редакция политики приходит снаружи.** Модуль не знает, какая редакция
 считается текущей, — это вопрос текста политики, а не учётных записей.
 Вызывающий передаёт её явно, и потому история согласий читается одинаково
 через год после смены текста.
+
+**Код привязки доказывает личность и только её.** `redeem_link_code`
+возвращает учётную запись и останавливается: привязать чат к ней — дело
+Notifications, а оркеструет обе команды интерфейсный слой бота (ADR-0017).
 """
 
 from datetime import datetime
 
 from ..application import commands, queries
 from ..domain.consent import Consent
+from ..domain.link_code import InvalidLinkCode as InvalidLinkCodeError
 
 
 def _repository():
@@ -61,7 +65,23 @@ def grant_privacy_consent(account_id: int, policy_version: str,
     commands.grant_privacy_consent(_repository(), account_id, policy_version, at)
 
 
+def issue_link_code(account_id: int) -> str:
+    """Выпустить одноразовый код привязки. Прежний код записи, если был,
+    перестаёт действовать."""
+    return commands.issue_link_code(_repository(), account_id)
+
+
+def redeem_link_code(code: str | None) -> int:
+    """Погасить код и узнать, чьей учётной записи он принадлежал.
+
+    Поднимает `InvalidLinkCodeError`, если код пуст или никому не принадлежит.
+    Повторное предъявление того же кода — та же ошибка: код одноразовый.
+    """
+    return commands.redeem_link_code(_repository(), code)
+
+
 __all__ = [
-    "Consent",
+    "Consent", "InvalidLinkCodeError",
     "has_current_consent", "consent_history", "grant_privacy_consent",
+    "issue_link_code", "redeem_link_code",
 ]

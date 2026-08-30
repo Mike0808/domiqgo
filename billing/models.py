@@ -22,10 +22,9 @@ class Tenant(models.Model):
     # Plan 2 hooks:
     messenger_platform = models.CharField(max_length=10, blank=True)
     messenger_chat_id = models.CharField(max_length=64, blank=True)
-    link_code = models.CharField(max_length=32, blank=True)
-    # Согласие на обработку ПДн уехало в `modules/identity/` шагом C4a: оно
-    # принадлежит учётной записи, а не профилю жильца, и хранится журналом, а
-    # не парой полей. Читать через `modules.identity.api`.
+    # Согласие на обработку ПДн (C4a) и код привязки (C4c) уехали в
+    # `modules/identity/`: они принадлежат учётной записи, а не профилю
+    # жильца. Читать через `modules.identity.api`.
 
     class Meta:
         verbose_name = "Жилец"

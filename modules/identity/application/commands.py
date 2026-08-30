@@ -8,8 +8,9 @@ from datetime import datetime
 
 from bus import publish
 
+from ..domain.link_code import InvalidLinkCode, LinkCode, presented
 from ..events import PrivacyConsentGranted
-from .ports import ConsentRepository
+from .ports import ConsentRepository, LinkCodeRepository
 
 
 def grant_privacy_consent(repository: ConsentRepository, account_id: int,
@@ -26,3 +27,24 @@ def grant_privacy_consent(repository: ConsentRepository, account_id: int,
     publish(PrivacyConsentGranted(
         account_id=account_id, policy_version=consent.policy_version,
         given_at=consent.given_at))
+
+
+def issue_link_code(repository: LinkCodeRepository, account_id: int) -> str:
+    """Выпустить код привязки; прежний код записи перестаёт действовать."""
+    link_code = LinkCode.issue(account_id)
+    repository.replace(link_code)
+    return link_code.code
+
+
+def redeem_link_code(repository: LinkCodeRepository, raw_code: str | None) -> int:
+    """Погасить код и вернуть, чьей учётной записи он принадлежал.
+
+    Код одноразовый (инвариант 5): гасится в том же вызове, в котором
+    опознан. События нет — результат нужен вызывающему немедленно, и
+    асинхронный сценарий тут ни к чему (спецификация, «Публикуемые события»).
+    """
+    link_code = repository.find(presented(raw_code))
+    if link_code is None:
+        raise InvalidLinkCode("Неверный код.")
+    repository.discard(link_code)
+    return link_code.account_id

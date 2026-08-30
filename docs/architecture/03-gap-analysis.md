@@ -37,7 +37,7 @@
 | `Apartment.rent`, `internet`, `other_fixed` | 26-28 | **Tenancy** — условия договора |
 | `Tenant.user` | 38-39 | **Identity** (связь) + **Tenancy** (ссылка) |
 | `Tenant.privacy_consent_at`, `privacy_consent_version` | 48-51 | **Identity**, превращаясь в журнал |
-| `Tenant.link_code` | 45 | **Identity** |
+| `Tenant.link_code` | 45 | **Identity** ✔ C4c |
 | `Tenant.full_name` | 41 | **Tenancy** |
 | `Tenant.apartment` | 40 | **Tenancy** |
 | `Tenant.messenger_platform`, `messenger_chat_id` | 43-44 | **Notifications** |
@@ -69,8 +69,8 @@
 | `intake.py: confirm_payment` | 24-30 | **Payments** (`ConfirmPayment`) |
 | `intake.py: _revert_if_no_pending` | 32-39 | **исчезает** |
 | `intake.py: reject_payment` | 41-49 | **Payments** (`RejectPayment`) |
-| `linking.py: generate_link_code` | 7-11 | **Identity** |
-| `linking.py: link_chat` | 13-24 | **разделяется**: Identity + Notifications |
+| `linking.py: generate_link_code` | 7-11 | **Identity** ✔ C4c |
+| `linking.py: link_chat` | 13-24 | **разделяется**: Identity ✔ C4c + Notifications |
 | `bot.py: _find_tenant` | 20-23 | **Notifications** (`ResolveAccountByChannel`) |
 | `bot.py: process_message`, `handle_update` | 26-63 | **интерфейсный слой** |
 

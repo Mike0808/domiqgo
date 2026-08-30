@@ -1,4 +1,4 @@
-"""Хранение согласий. Единственное место модуля, знающее о базе.
+"""Хранение согласий и кодов привязки. Единственное место модуля, знающее о базе.
 
 Ссылка на учётную запись — идентификатором без констрейнта (правило 1.3).
 Учётной записью на P1 служит `auth.User` Django: заводить собственную таблицу
@@ -30,3 +30,23 @@ class Consent(models.Model):
 
     def __str__(self):
         return f"#{self.account_id}: {self.policy_version} от {self.given_at:%d.%m.%Y}"
+
+
+class LinkCode(models.Model):
+    """Действующий код привязки учётной записи.
+
+    Строка существует, пока код действует: погашение — удаление строки, а не
+    флаг. Одна строка на запись (`unique`) — выпуск нового кода замещает
+    прежний; код уникален, потому что по нему ищут владельца.
+    """
+
+    account_id = models.PositiveIntegerField("Учётная запись", unique=True)
+    code = models.CharField("Код", max_length=32, unique=True)
+
+    class Meta:
+        db_table = "identity_link_code"
+        verbose_name = "Код привязки"
+        verbose_name_plural = "Коды привязки"
+
+    def __str__(self):
+        return f"#{self.account_id}: {self.code}"
