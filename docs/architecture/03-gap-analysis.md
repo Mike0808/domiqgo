@@ -34,11 +34,11 @@
 | `Apartment.gvs_heat_norm` | 17-21 | **Properties** |
 | `Apartment.electricity_meter_type` | 11-13 | **Metering** — свойство прибора |
 | `Apartment.round_total` | 22-25 | **Billing** — политика документа |
-| `Apartment.rent`, `internet`, `other_fixed` | 26-28 | **Tenancy** — условия договора |
+| `Apartment.rent`, `internet`, `other_fixed` | 26-28 | **Tenancy** — условия договора (D1a: скопированы в черновик; перенос — D1b) |
 | `Tenant.user` | 38-39 | **Identity** (связь) + **Tenancy** (ссылка) |
 | `Tenant.privacy_consent_at`, `privacy_consent_version` | 48-51 | **Identity**, превращаясь в журнал |
 | `Tenant.link_code` | 45 | **Identity** ✔ C4c |
-| `Tenant.full_name` | 41 | **Tenancy** |
+| `Tenant.full_name` | 41 | **Tenancy** (D1a: скопировано в черновик; перенос — D1c) |
 | `Tenant.apartment` | 40 | **Tenancy** |
 | `Tenant.messenger_platform`, `messenger_chat_id` | 43-44 | **Notifications** |
 | `Tariff` | 60-85 | **Tariffs** — ✔ перенесено шагом C1a |

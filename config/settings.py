@@ -58,6 +58,8 @@ INSTALLED_APPS = [
     "modules.metering.apps.MeteringConfig",
     "modules.properties.apps.PropertiesConfig",
     "modules.identity.apps.IdentityConfig",
+    # Этап D: первый не-лист графа — зависит от Identity и Properties.
+    "modules.tenancy.apps.TenancyConfig",
 ]
 
 SITE_ID = 1
@@ -193,6 +195,7 @@ MIGRATION_MODULES = {
     "metering": "modules.metering.infrastructure.migrations",
     "properties": "modules.properties.infrastructure.migrations",
     "identity": "modules.identity.infrastructure.migrations",
+    "tenancy": "modules.tenancy.infrastructure.migrations",
 }
 
 
