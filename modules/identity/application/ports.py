@@ -1,4 +1,4 @@
-"""Порты хранилищ: согласий и кодов привязки."""
+"""Порты хранилищ: согласий, кодов привязки и привязанных провайдеров."""
 
 from datetime import datetime
 from typing import Protocol
@@ -21,3 +21,8 @@ class LinkCodeRepository(Protocol):
 
     def discard(self, link_code: LinkCode) -> None:
         """Погасить: после этого `find` его не находит."""
+
+
+class LinkedProviders(Protocol):
+    def linked_providers(self, account_id: int) -> list[str]:
+        """Идентификаторы провайдеров, привязанных к записи."""

@@ -6,7 +6,6 @@ from django.http import Http404
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.static import serve
-from allauth.socialaccount.models import SocialAccount
 from modules.identity import api as identity
 from modules.metering import api as metering
 from .consent import PRIVACY_POLICY_VERSION
@@ -129,10 +128,10 @@ def oauth_connections(request):
     if not identity.has_current_consent(request.user.pk, PRIVACY_POLICY_VERSION):
         return render(request, "billing/oauth_consent.html",
                        {"form": form, "policy_version": PRIVACY_POLICY_VERSION})
-    connected_provider_ids = list(
-        SocialAccount.objects.filter(user=request.user).values_list("provider", flat=True))
+    # Привязанные провайдеры — знание Identity; таблица allauth читается там,
+    # а не здесь (шаг C4d).
     return render(request, "billing/oauth_connections.html",
-                  {"connected_provider_ids": connected_provider_ids})
+                  {"connected_provider_ids": identity.list_linked_providers(request.user.pk)})
 
 def privacy_policy(request):
     return render(request, "billing/privacy_policy.html", {"policy_version": PRIVACY_POLICY_VERSION})

@@ -150,3 +150,53 @@ def test_a_presented_code_survives_surrounding_whitespace():
     code = api.issue_link_code(ACCOUNT)
 
     assert api.redeem_link_code(f"  {code} ") == ACCOUNT
+
+
+# ------------------------------------------------------------ внешний вход
+
+def _admit(identity_known, account_id):
+    return api.admit_external_login(identity_known=identity_known,
+                                    account_id=account_id, policy_version=CURRENT)
+
+
+def test_a_signed_in_account_without_consent_is_asked_for_it():
+    assert _admit(False, ACCOUNT) is api.ExternalLoginDecision.CONSENT_REQUIRED
+
+
+def test_a_signed_in_account_with_consent_may_link(received):
+    api.grant_privacy_consent(ACCOUNT, CURRENT, JULY)
+
+    assert _admit(False, ACCOUNT) is api.ExternalLoginDecision.LINK
+
+
+def test_someone_elses_consent_does_not_unlock_linking(received):
+    api.grant_privacy_consent(OTHER, CURRENT, JULY)
+
+    assert _admit(False, ACCOUNT) is api.ExternalLoginDecision.CONSENT_REQUIRED
+
+
+def test_nobody_signed_in_with_an_unknown_identity_is_rejected():
+    assert _admit(False, None) is api.ExternalLoginDecision.REJECTED
+
+
+def test_a_known_identity_signs_in_regardless_of_consent():
+    assert _admit(True, None) is api.ExternalLoginDecision.SIGN_IN
+
+
+# ------------------------------------------------------ привязанные провайдеры
+
+def test_a_fresh_account_has_no_linked_providers():
+    assert api.list_linked_providers(ACCOUNT) == []
+
+
+def test_linked_providers_are_listed_for_their_account_only():
+    from allauth.socialaccount.models import SocialAccount
+    from django.contrib.auth.models import User
+
+    mine = User.objects.create_user("mine")
+    theirs = User.objects.create_user("theirs")
+    SocialAccount.objects.create(user=mine, provider="yandex", uid="1")
+    SocialAccount.objects.create(user=mine, provider="esia", uid="2")
+    SocialAccount.objects.create(user=theirs, provider="vk", uid="3")
+
+    assert api.list_linked_providers(mine.pk) == ["esia", "yandex"]
