@@ -11,7 +11,7 @@ def media_setup(settings, tmp_path):
     settings.MEDIA_ROOT = tmp_path
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("owner", password="pass12345")
-    t = Tenant.objects.create(user=u, apartment=a, full_name="Владелец")
+    t = Tenant.objects.create(user=u, apartment=a)
     doc = Document.objects.create(
         tenant=t,
         file=SimpleUploadedFile("contract.pdf", b"%PDF-1.4 test"),
@@ -36,7 +36,7 @@ def test_other_tenant_gets_404_for_foreign_document(media_setup):
     _, doc = media_setup
     a2 = Apartment.objects.create(label="чужая кв")
     u2 = User.objects.create_user("other", password="pass12345")
-    Tenant.objects.create(user=u2, apartment=a2, full_name="Чужой")
+    Tenant.objects.create(user=u2, apartment=a2)
     c = Client()
     assert c.login(username="other", password="pass12345")
     assert c.get(doc.file.url).status_code == 404

@@ -41,7 +41,7 @@ def test_pre_social_login_redirects_to_connections_when_consent_missing():
     from allauth.core.exceptions import ImmediateHttpResponse
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("ivanov", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a, full_name="Иванов")  # no consent given
+    Tenant.objects.create(user=u, apartment=a)  # no consent given
     adapter = NoSignupSocialAccountAdapter()
     with pytest.raises(ImmediateHttpResponse) as exc:
         adapter.pre_social_login(_request(u), _FakeSocialLogin(False))
@@ -51,7 +51,7 @@ def test_pre_social_login_redirects_to_connections_when_consent_missing():
 def test_pre_social_login_proceeds_when_consent_given():
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("petrov", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a, full_name="Петров")
+    Tenant.objects.create(user=u, apartment=a)
     identity.grant_privacy_consent(u.pk, PRIVACY_POLICY_VERSION, timezone.now())
     adapter = NoSignupSocialAccountAdapter()
     # Must not raise — connect is allowed once consent matches the current version.

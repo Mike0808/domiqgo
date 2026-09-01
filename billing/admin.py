@@ -213,9 +213,15 @@ class DocumentInline(admin.TabularInline):
 
 @admin.register(Tenant)
 class TenantAdmin(admin.ModelAdmin):
-    list_display = ("full_name", "user", "apartment")
-    search_fields = ("full_name", "user__username")
+    # ФИО читается у договора (шаг D1c); искать по нему здесь нельзя без
+    # соединения с чужой таблицей — поиск по ФИО есть в разделе «Договоры».
+    list_display = ("display_name", "user", "apartment")
+    search_fields = ("user__username",)
     inlines = [DocumentInline]
+
+    @admin.display(description="ФИО")
+    def display_name(self, obj):
+        return obj.display_name
 
 # TariffAdmin уехал в modules/tariffs/infrastructure/admin.py шагом C1 и там
 # переписан: он ходит через команды модуля, а не правит таблицу напрямую.

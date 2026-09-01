@@ -30,7 +30,7 @@ def test_statement_unique_per_period():
 def test_tenant_links_user_and_apartment():
     a = Apartment.objects.create(label="кв. 3")
     u = User.objects.create_user("ivanov", password="x")
-    t = Tenant.objects.create(user=u, apartment=a, full_name="Иванов И.И.")
+    t = Tenant.objects.create(user=u, apartment=a)
     assert t.apartment == a
     assert u.tenant == t
     assert t.messenger_platform == ""   # Plan 2 hook present but empty
@@ -45,3 +45,19 @@ def test_meter_unique_per_apartment_and_kind(db):
                          initial_value=Decimal("100"))
     with _pytest.raises(IntegrityError):
         Meter.objects.create(apartment_id=a.pk, resource="cold_water", initial_value=Decimal("0"))
+
+
+# ----------------------------------------------- ФИО читается у договора (D1c)
+
+def test_a_tenant_is_named_by_their_running_tenancy():
+    from django.contrib.auth.models import User
+    from billing.models import Tenant
+    from billing.tests.tenancies import let_in
+
+    a = Apartment.objects.create(label="кв")
+    u = User.objects.create_user("ivanov")
+    tenant = Tenant.objects.create(user=u, apartment=a)
+    assert str(tenant) == "ivanov"            # договора нет — имя входа
+
+    let_in(a, account_id=u.pk, full_name="Иванов Иван")
+    assert str(tenant) == "Иванов Иван"       # ФИО — реквизит договора

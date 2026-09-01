@@ -46,7 +46,7 @@ def _apartment(label="кв"):
 
 def _tenant(apartment, username):
     user = User.objects.create_user(username, password="pass12345")
-    return Tenant.objects.create(user=user, apartment=apartment, full_name=username), user
+    return Tenant.objects.create(user=user, apartment=apartment), user
 
 
 def _login(user):

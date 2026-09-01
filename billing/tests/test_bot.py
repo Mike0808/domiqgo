@@ -18,7 +18,7 @@ def media_isolation(settings, tmp_path):
 def _tenant(chat_id=None):
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("t", password="x")
-    t = Tenant.objects.create(user=u, apartment=a, full_name="Иванов")
+    t = Tenant.objects.create(user=u, apartment=a)
     if chat_id is not None:
         t.messenger_platform = "telegram"; t.messenger_chat_id = str(chat_id); t.save()
     return t, a
@@ -92,3 +92,15 @@ def test_handle_update_ignores_irrelevant_update():
     adapter = FakeAdapter(parsed=None)
     handle_update(adapter, {"channel_post": {}})
     assert adapter.sent == []
+
+
+def test_the_bot_greets_the_tenant_by_the_name_on_the_tenancy():
+    from billing.tests.tenancies import let_in
+
+    t, a = _tenant()
+    let_in(a, account_id=t.user_id, full_name="Иванов Иван")
+    code = generate_link_code(t)
+
+    reply = process_message(FakeAdapter(), _msg(text=f"/start {code}"))
+
+    assert "Иванов Иван" in reply

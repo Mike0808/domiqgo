@@ -32,7 +32,7 @@ def tenant_setup():
     MeterReading.objects.create(apartment_id=a.pk, period=baseline_period, resource="cold_water", value=Decimal("100"))
     MeterReading.objects.create(apartment_id=a.pk, period=baseline_period, resource="electricity_single", value=Decimal("1400"))
     u = User.objects.create_user("ivanov", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a, full_name="Иванов")
+    Tenant.objects.create(user=u, apartment=a)
     let_in(a, account_id=u.pk, full_name="Иванов")   # договор периода (D1b)
     return a, u
 
@@ -160,7 +160,7 @@ def test_missing_sewage_tariff_shows_message_not_500(db):
     MeterReading.objects.create(apartment_id=a.pk, period=baseline, resource="cold_water", value=Decimal("100"))
     MeterReading.objects.create(apartment_id=a.pk, period=baseline, resource="electricity_single", value=Decimal("1400"))
     u = User.objects.create_user("petrov", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a, full_name="Петров")
+    Tenant.objects.create(user=u, apartment=a)
     let_in(a, account_id=u.pk)   # договор периода (D1b)
     c = Client()
     assert c.login(username="petrov", password="pass12345")
@@ -178,7 +178,7 @@ def test_first_month_uses_contract_initial_values(db):
     Meter.objects.create(apartment_id=a.pk, resource="electricity_single", serial_number="E-77",
                          initial_value=Decimal("1400"))
     u = User.objects.create_user("newbie", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a, full_name="Новосёл")
+    Tenant.objects.create(user=u, apartment=a)
     let_in(a, account_id=u.pk)   # договор периода (D1b)
     c = Client()
     assert c.login(username="newbie", password="pass12345")
@@ -206,7 +206,7 @@ def test_missing_heat_norm_shows_message_not_a_bill_without_heating(db):
     Meter.objects.create(apartment_id=a.pk, resource="hot_water", initial_value=Decimal("50"))
     Meter.objects.create(apartment_id=a.pk, resource="electricity_single", initial_value=Decimal("1400"))
     u = User.objects.create_user("gvs", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a, full_name="Без норматива")
+    Tenant.objects.create(user=u, apartment=a)
     let_in(a, account_id=u.pk)   # договор периода (D1b)
     c = Client()
     assert c.login(username="gvs", password="pass12345")
@@ -232,7 +232,7 @@ def test_a_tenant_without_registered_meters_has_nothing_to_submit(db):
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
     # ни одного прибора в реестре
     u = User.objects.create_user("orphan", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a, full_name="Без приборов")
+    Tenant.objects.create(user=u, apartment=a)
     let_in(a, account_id=u.pk)   # договор периода (D1b)
     c = Client()
     assert c.login(username="orphan", password="pass12345")

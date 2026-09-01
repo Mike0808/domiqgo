@@ -53,7 +53,7 @@ def apartment():
 def tenant_client(apartment):
     """Жилец, открывающий форму ввода показаний."""
     user = User.objects.create_user("zhilets", password="pass12345")
-    Tenant.objects.create(user=user, apartment=apartment, full_name="Жилец")
+    Tenant.objects.create(user=user, apartment=apartment)
     client = Client()
     client.login(username="zhilets", password="pass12345")
     return client

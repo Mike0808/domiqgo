@@ -21,7 +21,7 @@ def media_isolation(settings, tmp_path):
 def _pending_payment():
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("t", password="x")
-    t = Tenant.objects.create(user=u, apartment=a, full_name="Т")
+    t = Tenant.objects.create(user=u, apartment=a)
     MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1), status="unpaid")
     return attach_receipt(t, ContentFile(b"img", name="r.jpg"), source=Payment.TELEGRAM)
 

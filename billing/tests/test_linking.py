@@ -10,7 +10,7 @@ pytestmark = pytest.mark.django_db
 def _tenant(username="t"):
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user(username, password="x")
-    return Tenant.objects.create(user=u, apartment=a, full_name="Т")
+    return Tenant.objects.create(user=u, apartment=a)
 
 def test_generate_code_is_non_empty_and_saved():
     t = _tenant()

@@ -13,7 +13,7 @@ WEBHOOK = "/bot/telegram/webhook/"
 def _linked_tenant(chat_id=555):
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("t", password="x")
-    Tenant.objects.create(user=u, apartment=a, full_name="Иванов",
+    Tenant.objects.create(user=u, apartment=a,
                           messenger_platform="telegram", messenger_chat_id=str(chat_id))
     return a
 

@@ -18,7 +18,8 @@ class Tenant(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
                                 related_name="tenant")
     apartment = models.ForeignKey(Apartment, on_delete=models.PROTECT, related_name="tenants")
-    full_name = models.CharField("ФИО", max_length=200, blank=True)
+    # ФИО уехало в договор (`modules/tenancy/`) шагом D1c: это реквизит
+    # стороны договора, зафиксированный на момент его заключения (ADR-0010).
     # Plan 2 hooks:
     messenger_platform = models.CharField(max_length=10, blank=True)
     messenger_chat_id = models.CharField(max_length=64, blank=True)
@@ -30,8 +31,23 @@ class Tenant(models.Model):
         verbose_name = "Жилец"
         verbose_name_plural = "Жильцы"
 
+    @property
+    def display_name(self) -> str:
+        """ФИО из действующего договора учётной записи, иначе имя входа.
+
+        Спрашивается у Tenancy на сегодняшний день: «сегодня» — понятие
+        интерфейса, и модуль его не читает сам.
+        """
+        from django.utils import timezone
+        from modules.tenancy import api as tenancy
+
+        contract = tenancy.active_tenancy_for_account(self.user_id, timezone.localdate())
+        if contract is not None and contract.full_name:
+            return contract.full_name
+        return self.user.get_username()
+
     def __str__(self):
-        return self.full_name or self.user.get_username()
+        return self.display_name
 
 # `Tariff` уехал в modules/tariffs/ шагом C1: у него не было ни одного FK и на
 # него не ссылалась ни одна модель, поэтому лист графа отделился без разрыва

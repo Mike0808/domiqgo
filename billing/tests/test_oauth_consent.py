@@ -13,7 +13,7 @@ pytestmark = pytest.mark.django_db
 def _tenant(username, consented=False):
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user(username, password="pass12345")
-    Tenant.objects.create(user=u, apartment=a, full_name="Жилец")
+    Tenant.objects.create(user=u, apartment=a)
     if consented:
         # Согласие принадлежит учётной записи, а не профилю жильца (шаг C4a).
         identity.grant_privacy_consent(u.pk, PRIVACY_POLICY_VERSION,

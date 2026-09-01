@@ -17,7 +17,7 @@ def media_isolation(settings, tmp_path):
 def _tenant():
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("t", password="x")
-    return Tenant.objects.create(user=u, apartment=a, full_name="Т"), a
+    return Tenant.objects.create(user=u, apartment=a), a
 
 def _receipt():
     return ContentFile(b"img", name="r.jpg")

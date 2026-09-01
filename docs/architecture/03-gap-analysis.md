@@ -38,7 +38,7 @@
 | `Tenant.user` | 38-39 | **Identity** (связь) + **Tenancy** (ссылка) |
 | `Tenant.privacy_consent_at`, `privacy_consent_version` | 48-51 | **Identity**, превращаясь в журнал |
 | `Tenant.link_code` | 45 | **Identity** ✔ C4c |
-| `Tenant.full_name` | 41 | **Tenancy** (D1a: скопировано в черновик; перенос — D1c) |
+| `Tenant.full_name` | 41 | **Tenancy** ✔ D1c |
 | `Tenant.apartment` | 40 | **Tenancy** |
 | `Tenant.messenger_platform`, `messenger_chat_id` | 43-44 | **Notifications** |
 | `Tariff` | 60-85 | **Tariffs** — ✔ перенесено шагом C1a |

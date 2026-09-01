@@ -60,7 +60,7 @@ def test_two_tenants_of_one_apartment_each_have_their_own_access():
     apartment = Apartment.objects.create(label="кв")
     for username in ("ivanov", "ivanova"):
         user = User.objects.create_user(username, password="pass12345")
-        Tenant.objects.create(user=user, apartment=apartment, full_name=username)
+        Tenant.objects.create(user=user, apartment=apartment)
     invoice = MonthlyStatement.objects.create(
         apartment=apartment, period=date(2026, 5, 1), total=Decimal("1000.00"))
 

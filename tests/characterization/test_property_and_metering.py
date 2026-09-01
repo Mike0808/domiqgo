@@ -305,7 +305,7 @@ def test_deleting_an_apartment_with_a_tenant_is_refused():
     """
     apartment = Apartment.objects.create(label="кв")
     user = User.objects.create_user("ivanov", password="pass12345")
-    Tenant.objects.create(user=user, apartment=apartment, full_name="Иванов")
+    Tenant.objects.create(user=user, apartment=apartment)
 
     with pytest.raises(ProtectedError):
         apartment.delete()
