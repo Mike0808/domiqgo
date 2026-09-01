@@ -200,3 +200,38 @@ def test_linked_providers_are_listed_for_their_account_only():
     SocialAccount.objects.create(user=theirs, provider="vk", uid="3")
 
     assert api.list_linked_providers(mine.pk) == ["esia", "yandex"]
+
+
+# ---------------------------------------------------------- учётные записи
+
+def test_an_unregistered_staff_account_is_an_owner_by_the_bridge():
+    """Мост от флага «персонал»: запись, заведённая стандартной админкой после
+    миграции, всё равно получает тип — тот же, что дала бы миграция."""
+    from django.contrib.auth.models import User
+
+    boss = User.objects.create_user("boss", is_staff=True)
+    plain = User.objects.create_user("plain")
+
+    assert api.get_account(boss.pk).type is api.AccountType.OWNER
+    assert api.get_account(plain.pk).type is api.AccountType.TENANT
+
+
+def test_an_unknown_account_is_a_tenant():
+    """Нет ни записи реестра, ни пользователя — наименьшие права."""
+    assert api.get_account(10**6).is_owner is False
+
+
+def test_the_registry_entry_wins_over_the_staff_flag():
+    from django.contrib.auth.models import User
+
+    boss = User.objects.create_user("boss", is_staff=True)
+    api.register_account(boss.pk, api.AccountType.TENANT)
+
+    assert api.get_account(boss.pk).type is api.AccountType.TENANT
+
+
+def test_registering_again_replaces_the_type():
+    api.register_account(ACCOUNT, api.AccountType.TENANT)
+    api.register_account(ACCOUNT, api.AccountType.OWNER)
+
+    assert api.get_account(ACCOUNT).is_owner is True

@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from ..domain.account import Account, AccountType, type_from_staff_flag
 from ..domain.consent import Consent, ConsentJournal
 from ..domain.link_code import LinkCode
 from . import models
@@ -55,3 +56,26 @@ def linked_providers(account_id: int) -> list[str]:
 
     return list(SocialAccount.objects.filter(user_id=account_id)
                 .order_by("provider").values_list("provider", flat=True))
+
+
+# ---------------------------------------------------------- учётные записи
+
+def load_account(account_id: int) -> Account:
+    """Запись реестра важнее флага; флаг — мост для незарегистрированных.
+
+    `auth.User` — таблица учётных записей самого Identity (модуль своей не
+    заводит), так что чтение флага здесь — чтение своих данных, а не чужих.
+    """
+    row = models.Account.objects.filter(account_id=account_id).first()
+    if row is not None:
+        return Account(account_id=account_id, type=AccountType(row.type))
+    from django.contrib.auth import get_user_model
+
+    is_staff = (get_user_model().objects.filter(pk=account_id)
+                .values_list("is_staff", flat=True).first())
+    return Account(account_id=account_id, type=type_from_staff_flag(bool(is_staff)))
+
+
+def register(account_id: int, type: AccountType) -> None:
+    models.Account.objects.update_or_create(
+        account_id=account_id, defaults={"type": type.value})

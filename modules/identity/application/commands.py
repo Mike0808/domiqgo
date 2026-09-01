@@ -8,9 +8,22 @@ from datetime import datetime
 
 from bus import publish
 
+from ..domain.account import AccountType
 from ..domain.link_code import InvalidLinkCode, LinkCode, presented
 from ..events import PrivacyConsentGranted
-from .ports import ConsentRepository, LinkCodeRepository
+from .ports import AccountRegistry, ConsentRepository, LinkCodeRepository
+
+
+def register_account(registry: AccountRegistry, account_id: int,
+                     type: AccountType) -> None:
+    """Записать тип учётной записи в реестр.
+
+    Это половина `CreateAccount`: имя входа и пароль заводит стандартная
+    админка Django, а здесь фиксируется то, чего у `auth.User` нет. События
+    `AccountCreated` нет намеренно — запись уже существовала, и объявлять её
+    созданной значило бы лгать журналу шины.
+    """
+    registry.register(account_id, type)
 
 
 def grant_privacy_consent(repository: ConsentRepository, account_id: int,

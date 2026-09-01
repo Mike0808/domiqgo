@@ -1,8 +1,13 @@
-"""Чтение: согласие и его история, решение о внешнем входе, привязанные
-провайдеры."""
+"""Чтение: учётная запись и её тип, согласие и его история, решение о
+внешнем входе, привязанные провайдеры."""
 
+from ..domain.account import Account
 from ..domain.external_login import ExternalLoginDecision, admit_external_login
-from .ports import ConsentRepository, LinkedProviders
+from .ports import AccountRegistry, ConsentRepository, LinkedProviders
+
+
+def get_account(registry: AccountRegistry, account_id: int) -> Account:
+    return registry.load_account(account_id)
 
 
 def has_current_consent(repository: ConsentRepository, account_id: int,

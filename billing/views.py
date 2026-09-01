@@ -24,7 +24,9 @@ def _tenant_for(request):
         return None
 
 def _no_tenant_response(request):
-    if request.user.is_staff:
+    # Куда вести человека без профиля жильца, решает тип учётной записи из
+    # Identity, а не флаг «персонал» Django (шаг C4e).
+    if identity.get_account(request.user.pk).is_owner:
         return redirect("/admin/")
     return render(request, "billing/no_tenant.html")
 
@@ -102,12 +104,12 @@ def documents(request):
 
 @login_required
 def media_file(request, path):
-    """Serve an uploaded file only to its owner (or staff).
+    """Serve an uploaded file only to its owner (or the landlord).
 
     All /media URLs route here — nothing under MEDIA_ROOT is ever served
     without authentication (rental agreements contain passport data).
     """
-    if not request.user.is_staff and not Document.objects.filter(
+    if not identity.get_account(request.user.pk).is_owner and not Document.objects.filter(
             file=path, tenant__user=request.user).exists():
         raise Http404
     return serve(request, path, document_root=settings.MEDIA_ROOT)

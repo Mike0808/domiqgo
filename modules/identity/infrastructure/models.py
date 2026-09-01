@@ -50,3 +50,28 @@ class LinkCode(models.Model):
 
     def __str__(self):
         return f"#{self.account_id}: {self.code}"
+
+
+class Account(models.Model):
+    """Реестр учётных записей: тип поверх `auth.User`.
+
+    Строка есть не у каждой записи: реестр заполнила миграция C4e, а новые
+    записи заводятся стандартной админкой Django, которая о реестре не знает.
+    Незарегистрированной записи тип назначается мостом от флага «персонал»
+    (`domain.type_from_staff_flag`) — до появления `CreateAccount` в панели.
+    """
+
+    OWNER = "owner"
+    TENANT = "tenant"
+    TYPE_CHOICES = [(OWNER, "Владелец"), (TENANT, "Жилец")]
+
+    account_id = models.PositiveIntegerField("Учётная запись", unique=True)
+    type = models.CharField("Тип", max_length=10, choices=TYPE_CHOICES)
+
+    class Meta:
+        db_table = "identity_account"
+        verbose_name = "Учётная запись"
+        verbose_name_plural = "Учётные записи"
+
+    def __str__(self):
+        return f"#{self.account_id}: {self.get_type_display()}"

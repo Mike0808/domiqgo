@@ -79,7 +79,7 @@
 | Фрагмент | Строки | Целевой модуль |
 |---|---|---|
 | `views.py: _tenant_for` | 19-23 | **Tenancy** (`GetActiveTenancyForAccount`) |
-| `views.py: _no_tenant_response` | 25-28 | **Identity** (тип учётной записи вместо `is_staff`) |
+| `views.py: _no_tenant_response` | 25-28 | **Identity** (тип учётной записи вместо `is_staff`) ✔ C4e |
 | `views.py: current_month` — построение формы | 36-37 | **Metering** (`GetExpectedMeters`) |
 | `views.py: current_month` — блокировка | 39-40 | **Metering** (`IsPeriodOpen`) |
 | `views.py: current_month` — запись показаний | 42-63 | **Metering** (`SubmitReadings`) + **Billing** (`PrepareInvoice`) |

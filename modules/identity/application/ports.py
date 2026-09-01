@@ -1,9 +1,20 @@
-"""Порты хранилищ: согласий, кодов привязки и привязанных провайдеров."""
+"""Порты хранилищ: реестра учётных записей, согласий, кодов привязки и
+привязанных провайдеров."""
 
 from datetime import datetime
 from typing import Protocol
 
+from ..domain.account import Account, AccountType
 from ..domain.link_code import LinkCode
+
+
+class AccountRegistry(Protocol):
+    def load_account(self, account_id: int) -> Account:
+        """Запись реестра, а для незарегистрированной — тип по мосту от
+        флага «персонал» (`type_from_staff_flag`)."""
+
+    def register(self, account_id: int, type: AccountType) -> None:
+        """Записать тип в реестр; прежняя запись, если была, замещается."""
 
 
 class ConsentRepository(Protocol):
