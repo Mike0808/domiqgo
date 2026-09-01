@@ -8,6 +8,7 @@ from modules.metering.infrastructure.models import Meter, MeterReading
 from modules.properties import api as properties
 from billing.models import Apartment, MonthlyStatement
 from modules.tariffs.api import publish_tariff_version
+from billing.tests.tenancies import let_in
 
 pytestmark = pytest.mark.django_db
 
@@ -26,6 +27,7 @@ def test_admin_apartment_changelist_loads(admin_client):
 def test_regenerate_action_recomputes_total(admin_client):
     
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
+    let_in(a)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     Meter.objects.create(apartment_id=a.pk, resource="cold_water", initial_value=Decimal("0"))
@@ -45,6 +47,7 @@ def test_regenerate_action_recomputes_total(admin_client):
 def test_regenerate_action_reports_failure_without_500(admin_client):
     
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=True)
+    let_in(a)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     Meter.objects.create(apartment_id=a.pk, resource="cold_water", initial_value=Decimal("0"))
@@ -61,6 +64,7 @@ def test_regenerate_action_reports_failure_without_500(admin_client):
 def test_admin_saving_reading_recalculates_statement(admin_client):
     
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
+    let_in(a)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     Meter.objects.create(apartment_id=a.pk, resource="cold_water", initial_value=Decimal("100"))
@@ -106,6 +110,7 @@ def test_the_apartment_list_stays_quiet_when_the_registry_is_complete(admin_clie
 def test_recalculating_warns_about_meters_that_are_not_registered(admin_client):
     a = Apartment.objects.create(label="кв. 10", has_hot_water=False,
                                  has_sewage=False)
+    let_in(a)
     stmt = MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1))
 
     resp = admin_client.post("/admin/billing/monthlystatement/", {
@@ -302,7 +307,6 @@ def test_adding_an_apartment_through_the_admin_announces_it(admin_client):
             "label": "Ленина", "address": "Уфа, Ленина 1",
             "has_cold_water": "on", "has_sewage": "on",
             "gvs_heat_norm": "0", "round_total": "on",
-            "rent": "20000", "internet": "700", "other_fixed": "0",
         })
 
         assert resp.status_code == 302
@@ -312,17 +316,15 @@ def test_adding_an_apartment_through_the_admin_announces_it(admin_client):
 
 
 def test_the_temporary_tenants_survive_the_command(admin_client):
-    """Форма показывает поля трёх модулей сразу. Команда пишет своё, остаток
-    дописывается следом — и не должен потеряться по дороге."""
+    """Форма показывает поля двух модулей сразу (условия договора уехали в
+    Tenancy на D1b). Команда пишет своё, остаток дописывается следом — и не
+    должен потеряться по дороге."""
     admin_client.post("/admin/properties/apartment/add/", {
         "label": "Ленина", "address": "", "has_cold_water": "on",
         "has_sewage": "on", "gvs_heat_norm": "0", "round_total": "on",
-        "rent": "20000", "internet": "700", "other_fixed": "0",
     })
 
     stored = Apartment.objects.get()
-    assert stored.rent == Decimal("20000.00")
-    assert stored.internet == Decimal("700.00")
     assert stored.round_total is True
 
 
@@ -340,7 +342,6 @@ def test_changing_the_composition_from_the_admin_announces_it(admin_client):
             "label": "Ленина", "address": "", "has_cold_water": "on",
             "has_hot_water": "on", "has_sewage": "on",
             "gvs_heat_norm": "0.05229", "round_total": "on",
-            "rent": "0", "internet": "0", "other_fixed": "0",
         })
 
         assert [(e.was_hot_water, e.now_hot_water) for e in received] == [(False, True)]
@@ -352,7 +353,6 @@ def test_an_apartment_without_a_label_is_refused_by_the_form(admin_client):
     resp = admin_client.post("/admin/properties/apartment/add/", {
         "label": "", "address": "", "has_cold_water": "on",
         "gvs_heat_norm": "0", "round_total": "on",
-        "rent": "0", "internet": "0", "other_fixed": "0",
     })
 
     assert resp.status_code == 200          # форма вернулась с ошибкой

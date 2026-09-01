@@ -25,3 +25,6 @@ class TenancyConfig(AppConfig):
         from .infrastructure import repository
 
         subscriptions.wire(repository)
+        # Админка тоже лежит в `infrastructure/` — Django ищет её в
+        # `<приложение>.admin` и сам туда не заглянет.
+        import_module(f"{self.name}.infrastructure.admin")

@@ -3,9 +3,19 @@ from datetime import date
 from modules.metering import api as metering
 from modules.properties import api as properties
 from modules.tariffs import api as tariffs
+from modules.tenancy import api as tenancy
 
 from .calculation import ApartmentConfig, compute_statement
 from ..models import MonthlyStatement
+
+
+class MissingTenancyError(Exception):
+    """На дату начала периода у объекта нет договора — счёт выставлять некому.
+
+    Отказ, а не счёт без аренды: молчаливый ноль в строке «Аренда» ничем не
+    лучше молчаливого нуля за подогрев (дефект №29), а адресата у такого
+    счёта всё равно нет — Billing перекладывает счёт на договор (E2).
+    """
 
 #: Электросчётчик ожидается у любой квартиры, а какой именно — однотарифный
 #: или пара «день/ночь» — знает реестр приборов, и только он
@@ -78,17 +88,29 @@ def line_to_dict(line) -> dict:
         "amount": str(line.amount),
     }
 
+def _terms_for(apartment, period: date):
+    """Условия договора периода — того, что действовал на дату начала периода
+    ([ADR-0024](../../docs/architecture/adr/0024-tenancy-of-record-for-period.md)).
+    Дату подставляет Billing: Tenancy не знает понятия «расчётный период»."""
+    contract = tenancy.tenancy_for(apartment.pk, period)
+    if contract is None:
+        raise MissingTenancyError(
+            f"На {period:%d.%m.%Y} у квартиры «{apartment.label}» нет договора: "
+            "заведите жильца или проверьте дату заселения.")
+    return contract.terms
+
+
 def generate_statement(apartment, period: date) -> MonthlyStatement:
-    # Состав подведённых услуг и норматив подогрева спрашиваются у Properties:
-    # это конфигурация объекта, и владеет ею модуль (шаг C3c). Ставка аренды,
-    # интернет, прочее и политика округления читаются из той же строки
-    # напрямую — они лежат в таблице объектов как временные жильцы и ждут
-    # Tenancy и Billing.
+    # Состав подведённых услуг и норматив подогрева спрашиваются у Properties
+    # (шаг C3c), условия — у договора периода в Tenancy (шаг D1b). Политика
+    # округления читается из строки объекта напрямую — временный жилец, ждёт
+    # Billing.
     obj = properties.get_property(apartment.pk)
+    terms = _terms_for(apartment, period)
     config = ApartmentConfig(
         has_sewage=obj.has_sewage, gvs_heat_norm=obj.gvs_heat_norm,
-        rent=apartment.rent, internet=apartment.internet,
-        other_fixed=apartment.other_fixed, round_total=apartment.round_total,
+        rent=terms.rent, internet=terms.internet,
+        other_fixed=terms.other_fixed, round_total=apartment.round_total,
     )
     consumption = _consumption_for(apartment, period, metered_resources(apartment))
     tariffs = _tariffs_for(period)

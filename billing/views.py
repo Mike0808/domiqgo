@@ -12,7 +12,9 @@ from .consent import PRIVACY_POLICY_VERSION
 from .forms import MeterReadingForm, ConsentForm
 from .models import Document, MonthlyStatement, Tenant
 from .services.calculation import MissingHeatNormError, MissingTariffError
-from .services.statements import metered_resources, generate_statement
+from .services.statements import (
+    MissingTenancyError, metered_resources, generate_statement,
+)
 
 def _current_period():
     return timezone.localdate().replace(day=1)
@@ -73,6 +75,13 @@ def current_month(request):
                     request,
                     "Норматив подогрева горячей воды не задан. "
                     "Обратитесь к арендодателю.")
+                return render(request, "billing/current_month.html",
+                              {"form": form, "statement": None, "period": period,
+                               "locked": False})
+            except MissingTenancyError:
+                messages.error(
+                    request,
+                    "Договор на этот месяц не найден. Обратитесь к арендодателю.")
                 return render(request, "billing/current_month.html",
                               {"form": form, "statement": None, "period": period,
                                "locked": False})

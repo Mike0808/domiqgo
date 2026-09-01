@@ -5,8 +5,9 @@ from modules.metering.infrastructure.models import Meter, MeterReading
 from billing.models import Apartment, MonthlyStatement
 from modules.tariffs.api import publish_tariff_version
 from billing.services.statements import (
-    generate_statement, metered_resources, missing_meters,
+    MissingTenancyError, generate_statement, metered_resources, missing_meters,
 )
+from billing.tests.tenancies import let_in
 
 pytestmark = pytest.mark.django_db
 
@@ -52,8 +53,8 @@ def test_metered_resources_come_from_the_registry_not_the_flags():
     assert metered_resources(a) == ["electricity_day", "electricity_night"]
 
 def test_generate_uses_previous_period_as_baseline():
-    a = Apartment.objects.create(label="кв", rent=Decimal("20000"), internet=Decimal("700"),
-                                 gvs_heat_norm=Decimal("0.05229"))
+    a = Apartment.objects.create(label="кв", gvs_heat_norm=Decimal("0.05229"))
+    let_in(a, rent="20000", internet="700")   # условия — у договора (D1b)
     _tariffs()
     _meters(a)
     _readings(a, date(2026, 6, 1), "100", "50", "1400")
@@ -73,6 +74,7 @@ def test_generate_uses_previous_period_as_baseline():
 
 def test_generate_selects_tariff_effective_for_period():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
+    let_in(a)
     publish_tariff_version(utility="cold_water", rate=Decimal("40.00"), effective_from=date(2025, 7, 1))
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2025, 7, 1))
@@ -92,6 +94,7 @@ def test_generate_selects_tariff_effective_for_period():
 
 def test_generate_is_idempotent_and_keeps_status():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
+    let_in(a)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     Meter.objects.create(apartment_id=a.pk, resource="cold_water", initial_value=Decimal("0"))
@@ -109,6 +112,7 @@ def test_generate_is_idempotent_and_keeps_status():
 
 def test_first_month_baseline_comes_from_meter_initial_values():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
+    let_in(a)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     # values fixed in the act at contract signing
@@ -127,6 +131,7 @@ def test_first_month_baseline_comes_from_meter_initial_values():
 
 def test_baseline_falls_back_per_meter():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
+    let_in(a)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     Meter.objects.create(apartment_id=a.pk, resource="cold_water", initial_value=Decimal("100"))
@@ -154,6 +159,7 @@ def test_without_registered_meters_nothing_metered_is_billed():
     не хватает, — см. `missing_meters` и столбец в списке квартир.
     """
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
+    let_in(a)
     publish_tariff_version(utility="cold_water", rate=Decimal("48.15"), effective_from=date(2026, 7, 1))
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2026, 7, 1))
     # ни одного прибора в реестре — только показания, взявшиеся ниоткуда
@@ -248,6 +254,7 @@ def test_the_bill_takes_the_service_composition_from_properties():
 
     a = Apartment.objects.create(label="кв", has_sewage=True,
                                  gvs_heat_norm=Decimal("0.05229"))
+    let_in(a)
     _tariffs()
     _meters(a)
     _readings(a, date(2026, 7, 1), "110", "55", "1500")
@@ -278,3 +285,37 @@ def test_the_meter_reconciliation_asks_properties_too():
         missing = missing_meters(a)
 
     assert "Горячая вода" in missing
+
+
+# --------------------------------------------- условия — у договора (D1b)
+
+def test_without_a_tenancy_for_the_period_no_statement_is_issued():
+    """Счёт без договора выставлять некому. Отказ, а не счёт без аренды —
+    молчаливый ноль в строке «Аренда» ничем не лучше нуля за подогрев."""
+    a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
+    _tariffs()
+    _meters(a)
+
+    with pytest.raises(MissingTenancyError):
+        generate_statement(a, date(2026, 7, 1))
+    assert not MonthlyStatement.objects.exists()
+
+
+def test_the_terms_come_from_the_tenancy_of_the_period():
+    """Смена жильца меняет аренду в счёте — квартира тут ни при чём."""
+    a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
+    _tariffs(effective=date(2026, 1, 1))
+    for resource in ("cold_water", "electricity_single"):
+        Meter.objects.create(apartment_id=a.pk, resource=resource, initial_value=Decimal("0"))
+    from modules.tenancy import api as tenancy
+    first = let_in(a, account_id=1, started_on=date(2026, 1, 1), rent="20000")
+    tenancy.end_tenancy(first, date(2026, 6, 30))
+    let_in(a, account_id=2, started_on=date(2026, 7, 1), rent="25000")
+    _readings(a, date(2026, 6, 1), "100", "0", "1400")
+    _readings(a, date(2026, 7, 1), "110", "0", "1500")
+
+    june = generate_statement(a, date(2026, 6, 1))
+    july = generate_statement(a, date(2026, 7, 1))
+
+    assert {l["code"]: l["amount"] for l in june.lines}["rent"] == "20000.00"
+    assert {l["code"]: l["amount"] for l in july.lines}["rent"] == "25000.00"

@@ -199,14 +199,13 @@ def test_saving_the_same_composition_announces_nothing(received):
 
 
 def test_a_composition_change_does_not_touch_the_temporary_tenants():
-    apartment = _apartment(rent=Decimal("20000"), round_total=False)
+    apartment = _apartment(round_total=False)
 
     api.change_service_composition(
         apartment.pk, has_cold_water=False, has_hot_water=False,
         has_sewage=False, gvs_heat_norm=Decimal("0"))
 
     stored = Apartment.objects.get(pk=apartment.pk)
-    assert stored.rent == Decimal("20000")
     assert stored.round_total is False
 
 
@@ -287,17 +286,14 @@ def test_decommissioning_one_leaves_the_neighbour_in_service():
 
 
 def test_the_fields_of_other_modules_survive_a_command():
-    """В таблице лежат временные жильцы — арендная ставка, интернет, политика
-    округления. Запись состояния эксплуатации не смеет их затирать: домен о
-    них не знает и восстановить бы не смог."""
-    apartment = _apartment(rent=Decimal("20000"), internet=Decimal("700"),
-                           round_total=False)
+    """В таблице лежит временный жилец — политика округления (условия
+    договора уехали в Tenancy на D1b). Запись состояния эксплуатации не смеет
+    его затирать: домен о нём не знает и восстановить бы не смог."""
+    apartment = _apartment(round_total=False)
 
     api.decommission_property(apartment.pk, JULY)
 
     stored = Apartment.objects.get(pk=apartment.pk)
-    assert stored.rent == Decimal("20000")
-    assert stored.internet == Decimal("700")
     assert stored.round_total is False
 
 

@@ -19,6 +19,7 @@ from django.test import Client
 from django.utils import timezone
 
 from modules.metering.infrastructure.models import Meter, MeterReading
+from billing.tests.tenancies import let_in
 from billing.models import Apartment, MonthlyStatement, Tenant
 from billing.services.statements import generate_statement
 from modules.tariffs.api import publish_tariff_version
@@ -39,6 +40,7 @@ def _apartment(label="кв"):
     a = Apartment.objects.create(label=label, has_hot_water=False, has_sewage=False)
     Meter.objects.create(apartment_id=a.pk, resource="cold_water", initial_value=Decimal("100"))
     Meter.objects.create(apartment_id=a.pk, resource="electricity_single", initial_value=Decimal("1400"))
+    let_in(a)   # счёт выставляется договору периода (D1b)
     return a
 
 

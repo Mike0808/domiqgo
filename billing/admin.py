@@ -22,16 +22,15 @@ from .services.intake import confirm_payment, reject_payment, _revert_if_no_pend
 
 @admin.register(Apartment)
 class ApartmentAdmin(admin.ModelAdmin):
-    list_display = ("label", "service_state", "meters_to_register",
-                    "rent", "internet")
+    list_display = ("label", "service_state", "meters_to_register")
     list_filter = ("decommissioned_on",)
     search_fields = ("label", "address")
     actions = ["decommission_properties", "recommission_properties"]
 
-    #: Поля, которыми Properties не владеет: условия договора ждут Tenancy,
-    #: политика округления — Billing. Форма правит их напрямую, потому что
-    #: команды на чужое добро у модуля нет и быть не должно.
-    TEMPORARY_TENANTS = ("rent", "internet", "other_fixed", "round_total")
+    #: Поле, которым Properties не владеет: политика округления ждёт Billing.
+    #: Форма правит его напрямую, потому что команды на чужое добро у модуля
+    #: нет и быть не должно. Условия договора уехали в Tenancy шагом D1b.
+    TEMPORARY_TENANTS = ("round_total",)
 
     def save_model(self, request, obj, form, change):
         """Объект заводится и правится командами модуля.

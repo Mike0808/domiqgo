@@ -89,9 +89,8 @@ class Apartment(models.Model):
         "Округлять итог", default=True,
         help_text="Итог свыше 10 000 ₽ округляется вниз до кратного 50 ₽ "
                   "(строка «Округление» в квитанции).")
-    rent = models.DecimalField("Аренда", max_digits=10, decimal_places=2, default=Decimal("0"))
-    internet = models.DecimalField("Интернет", max_digits=10, decimal_places=2, default=Decimal("0"))
-    other_fixed = models.DecimalField("Прочее", max_digits=10, decimal_places=2, default=Decimal("0"))
+    # `rent`, `internet`, `other_fixed` уехали в условия договора
+    # (`modules/tenancy/`) шагом D1b: они менялись при смене жильца, а не стен.
 
     class Meta:
         db_table = "properties_apartment"

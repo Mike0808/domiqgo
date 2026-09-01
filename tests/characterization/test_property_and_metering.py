@@ -41,6 +41,7 @@ from django.db.models import ProtectedError
 from modules.metering.infrastructure.models import Meter, MeterReading
 from modules.properties import api as properties
 from billing.models import Apartment, MonthlyStatement, Tenant
+from billing.tests.tenancies import let_in
 from billing.services.calculation import MissingHeatNormError
 from billing.services.statements import (
     generate_statement, metered_resources, missing_meters,
@@ -75,6 +76,7 @@ def _hot_water_apartment(norm):
     Meter.objects.create(apartment_id=apartment.pk, resource="hot_water", initial_value=Decimal("50"))
     Meter.objects.create(apartment_id=apartment.pk, resource="electricity_single",
                          initial_value=Decimal("1400"))
+    let_in(apartment)   # счёт выставляется договору периода (D1b)
     _tariff("hot_water_cold_component", "25.86")
     _tariff("hot_water_heat_component", "2389.72")
     _tariff("electricity_single", "4.87")
@@ -152,6 +154,7 @@ def test_a_registered_meter_is_billed_even_without_the_flag():
     apartment = Apartment.objects.create(label="кв", has_hot_water=False,
                                          has_sewage=False,
                                          gvs_heat_norm=Decimal("0.05229"))
+    let_in(apartment)
     Meter.objects.create(apartment_id=apartment.pk, resource="cold_water", initial_value=Decimal("100"))
     Meter.objects.create(apartment_id=apartment.pk, resource="electricity_single",
                          initial_value=Decimal("1400"))
@@ -189,6 +192,7 @@ def test_a_flag_without_a_registered_meter_bills_nothing_but_warns():
     владельцу.
     """
     apartment = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
+    let_in(apartment)
     _tariff("cold_water", "48.15")
     _tariff("electricity_single", "4.87")
     MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
