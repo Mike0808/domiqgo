@@ -111,7 +111,24 @@ def test_tenant_cannot_see_other_apartment_history(tenant_setup):
     assert b"123" in resp.content        # own statement shown
     assert b"999" not in resp.content    # foreign statement hidden
 
-def test_paid_month_locks_readings(tenant_setup):
+def test_issued_month_locks_readings(tenant_setup):
+    """Шаг E4 (дефект №21): форму закрывает выставление счёта, а не оплата."""
+    a, u = tenant_setup
+    period = _period_first_of_this_month()
+    from billing.tests.settle import issue
+    issue(MonthlyStatement.objects.create(
+        apartment=a, period=period, total=Decimal("500"), tenancy_id=_cid(u)))
+    c = _login(u)
+    resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
+    assert resp.status_code == 302               # rejected with a message, not applied
+    assert not MeterReading.objects.filter(apartment_id=a.pk, period=period).exists()
+    stmt = MonthlyStatement.objects.get(apartment=a, period=period)
+    assert stmt.total == Decimal("500")          # issued amount untouched
+    page = c.get("/")
+    assert "Показания заблокированы" in page.content.decode()
+
+def test_a_draft_month_stays_editable_even_when_paid(tenant_setup):
+    """Оплата больше не запирает форму: замок — у предъявления (E4)."""
     a, u = tenant_setup
     period = _period_first_of_this_month()
     from billing.tests.settle import settle
@@ -119,29 +136,8 @@ def test_paid_month_locks_readings(tenant_setup):
         apartment=a, period=period, total=Decimal("500"), tenancy_id=_cid(u)))
     c = _login(u)
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
-    assert resp.status_code == 302               # rejected with a message, not applied
-    assert not MeterReading.objects.filter(apartment_id=a.pk, period=period).exists()
-    stmt = MonthlyStatement.objects.get(apartment=a, period=period)
-    assert stmt.status == MonthlyStatement.PAID
-    assert stmt.total == Decimal("500")          # settled amount untouched
-    page = c.get("/")
-    assert "Показания заблокированы" in page.content.decode()
-
-def test_pending_month_locks_readings(tenant_setup):
-    a, u = tenant_setup
-    period = _period_first_of_this_month()
-    from billing.tests.settle import pend
-    pend(MonthlyStatement.objects.create(
-        apartment=a, period=period, total=Decimal("500"), tenancy_id=_cid(u)))
-    c = _login(u)
-    resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
-    assert resp.status_code == 302               # rejected with a message, not applied
-    assert not MeterReading.objects.filter(apartment_id=a.pk, period=period).exists()
-    stmt = MonthlyStatement.objects.get(apartment=a, period=period)
-    assert stmt.status == MonthlyStatement.PENDING
-    assert stmt.total == Decimal("500")          # amount under review untouched
-    page = c.get("/")
-    assert "Показания заблокированы" in page.content.decode()
+    assert resp.status_code == 302
+    assert MeterReading.objects.filter(apartment_id=a.pk, period=period).exists()
 
 def test_staff_without_tenant_profile_redirects_to_admin(db):
     User.objects.create_superuser("boss", "boss@example.com", "pass12345")

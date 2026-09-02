@@ -21,8 +21,9 @@ def _statement(total="21500"):
     u = User.objects.create_user("t", password="x")
     let_in(a, account_id=u.pk)
     Tenant.objects.create(user=u, apartment=a)
-    return MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1),
-                                           total=Decimal(total))
+    from billing.tests.settle import issue
+    return issue(MonthlyStatement.objects.create(
+        apartment=a, period=date(2026, 7, 1), total=Decimal(total)))
 
 
 def test_a_confirmed_payment_reaches_the_projection_by_event():

@@ -141,8 +141,8 @@ def correct_reading(apartment_id: int, period: date, resource: str,
 def close_period(apartment_id: int, period: date) -> None:
     """Объявить период закрытым для изменений.
 
-    Зовёт Billing, выставляя счёт ([ADR-0012](../../../docs/architecture/adr/0012-metering-period-lock.md)).
-    Сегодня не зовёт никто: момент предъявления счёта появляется на шаге E4.
+    Зовёт Billing, выставляя счёт ([ADR-0012](../../../docs/architecture/adr/0012-metering-period-lock.md)) —
+    с шага E4, где появился момент предъявления.
     """
     commands.close_period(_repository(), apartment_id, period)
 

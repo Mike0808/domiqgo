@@ -6,6 +6,7 @@ from modules.tariffs import api as tariffs
 from modules.tenancy import api as tenancy
 
 from .calculation import ApartmentConfig, compute_statement
+from .issuing import InvoiceAlreadyIssued
 from ..models import MonthlyStatement
 
 
@@ -127,6 +128,11 @@ def generate_statement(apartment, period: date) -> MonthlyStatement:
             .filter(apartment=apartment, period=period, tenancy_id=None).first())
     if stmt is None:
         stmt = MonthlyStatement(tenancy_id=contract.tenancy_id, period=period)
+    if stmt.pk is not None and stmt.is_issued:
+        # Инвариант 2 Billing: выставленный счёт неизменяем. Пересчёт даст
+        # ревизию, когда она появится; молча переписать предъявленное нельзя.
+        raise InvoiceAlreadyIssued(
+            f"Счёт {stmt} уже выставлен и не пересчитывается.")
     stmt.tenancy_id = contract.tenancy_id
     for field, value in values.items():
         setattr(stmt, field, value)

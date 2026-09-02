@@ -21,6 +21,17 @@ def settle(statement, amount=None):
         statement_id=statement.pk, defaults={"confirmed_total": value})
 
 
+def issue(statement):
+    """Счёт предъявлен — фабрикой, без команды: для тестов о платежах и
+    замках, которым не важен путь выставления. Путь проверяет
+    `test_issuing.py`."""
+    from django.utils import timezone
+
+    statement.issued_at = timezone.now()
+    statement.save(update_fields=["issued_at"])
+    return statement
+
+
 def pend(statement):
     """По счёту есть заявленный платёж — «на проверке»."""
     return Payment.objects.create(statement=statement, source=Payment.WEB,

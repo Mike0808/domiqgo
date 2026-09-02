@@ -27,8 +27,9 @@ def _pending_payment():
     u = User.objects.create_user("t", password="x")
     let_in(a, account_id=u.pk)   # платёж ищет счёт договора (шаг E2)
     t = Tenant.objects.create(user=u, apartment=a)
-    MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1),
-                                    total=Decimal("21500"))
+    from billing.tests.settle import issue
+    issue(MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1),
+                                          total=Decimal("21500")))
     return attach_receipt(t, ContentFile(b"img", name="r.jpg"), source=Payment.TELEGRAM)
 
 def test_payment_changelist_loads(admin_client, media_isolation):
@@ -50,8 +51,9 @@ def test_confirm_action_marks_paid_with_the_invoice_total(admin_client, media_is
 def test_recording_a_manual_payment_from_the_admin(admin_client, media_isolation):
     """Ручная отметка (шаг E1): счёт, сумма, примечание — без чека."""
     a = Apartment.objects.create(label="кв")
-    stmt = MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1),
-                                           total=Decimal("21500"))
+    from billing.tests.settle import issue
+    stmt = issue(MonthlyStatement.objects.create(
+        apartment=a, period=date(2026, 7, 1), total=Decimal("21500")))
     resp = admin_client.post("/admin/billing/payment/add/", {
         "statement": str(stmt.pk), "amount": "21500", "note": "наличными"})
     assert resp.status_code == 302

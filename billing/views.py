@@ -64,11 +64,13 @@ def current_month(request):
     statement = (MonthlyStatement.objects
                  .filter(tenancy_id=of_record.tenancy_id, period=period).first()
                  if of_record else None)
-    locked = statement is not None and statement.status in (MonthlyStatement.PAID, MonthlyStatement.PENDING)
+    # Замок следует за выставлением, а не за оплатой (шаг E4, дефект №21):
+    # предъявленный счёт неизменяем, и показания под ним — тоже.
+    locked = statement is not None and statement.is_issued
 
     if request.method == "POST":
         if locked:
-            messages.error(request, "Показания заблокированы: месяц оплачен или платёж на проверке.")
+            messages.error(request, "Показания заблокированы: счёт за месяц выставлен.")
             return redirect("current_month")
         form = MeterReadingForm(request.POST, meters=meters, serials=serials)
         if form.is_valid():

@@ -102,37 +102,34 @@ def test_two_tenancies_in_one_month_may_both_be_invoiced():
 
 
 # --------------------------------------------------------------------------
-# №21 — блокировка ввода следует за оплатой. Переписывает шаг E4.
+# №21 — блокировку ввода держит выставление счёта. Исправлен шагом E4.
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
-    "status, locked",
+    "issued, locked",
     [
-        (MonthlyStatement.UNPAID, False),   # счёт есть, но показания ещё правятся
-        (MonthlyStatement.PENDING, True),   # появился чек — форма закрылась
-        (MonthlyStatement.PAID, True),
+        (False, False),   # черновик: показания правятся, даже оплаченный
+        (True, True),     # выставлен — форма закрыта (дефект №21 исправлен)
     ],
 )
-def test_reading_lock_follows_payment_status(status, locked):
-    """Форму закрывает не выставление счёта, а платёж по нему.
+def test_reading_lock_follows_issuing(issued, locked):
+    """№21 исправлен (E4): форму закрывает выставление счёта, а не платёж.
 
-    Это и есть замыкание Metering ↔ Billing: сценарий ввода показаний читает
-    статус оплаты. После E4 форму закрывает выставление счёта, а замок живёт
-    в Metering (ADR-0012) — таблица ожиданий здесь меняется целиком.
+    Предъявленный счёт неизменяем — и показания под ним тоже; оплата сама по
+    себе форму больше не трогает.
     """
     apartment = _apartment()
     _tariffs()
     _, user = _tenant(apartment, "ivanov")
     period = _current_period()
-    from billing.tests.settle import pend, settle
+    from billing.tests.settle import issue, settle
     from modules.tenancy import api as tenancy_api
     stmt = MonthlyStatement.objects.create(
         apartment=apartment, period=period, total=Decimal("500.00"),
         tenancy_id=tenancy_api.tenancy_for(apartment.pk, period).tenancy_id)
-    if status == MonthlyStatement.PAID:
-        settle(stmt)
-    elif status == MonthlyStatement.PENDING:
-        pend(stmt)
+    settle(stmt)                     # оплачен в обоих случаях
+    if issued:
+        issue(stmt)
     client = _login(user)
 
     assert client.get("/").context["locked"] is locked
@@ -143,44 +140,45 @@ def test_reading_lock_follows_payment_status(status, locked):
 
 
 # --------------------------------------------------------------------------
-# №35 — счёт возникает как побочный эффект. Переписывает шаг E4.
+# №35 — расчёт даёт черновик, предъявляет владелец. Исправлен шагом E4.
 # --------------------------------------------------------------------------
 
-def test_invoice_appears_without_anyone_issuing_it():
-    """Жилец вводит показания — счёт возникает сам, действий владельца нет.
-
-    После E4 расчёт даёт черновик, а предъявление становится отдельным
-    действием владельца.
-    """
+def test_readings_make_a_draft_and_only_the_owner_issues_it():
+    """№35 исправлен (E4): жилец вводит показания и видит сумму — это
+    черновик; счётом он становится действием владельца, с моментом
+    предъявления и сроком оплаты."""
     apartment = _apartment()
     _tariffs()
     _, user = _tenant(apartment, "ivanov")
     period = _current_period()
-    assert not MonthlyStatement.objects.exists()
 
     _login(user).post("/", {"cold_water": "110", "electricity_single": "1500"})
 
-    invoice = MonthlyStatement.objects.get(apartment=apartment, period=period)
-    # (110-100)*48.15 + (1500-1400)*4.87 = 968.50 — ниже 10 000, без округления
-    assert invoice.total == Decimal("968.50")
+    draft = MonthlyStatement.objects.get(apartment=apartment, period=period)
+    assert draft.total == Decimal("968.50")   # сумма видна сразу — сценарий цел
+    assert not draft.is_issued                # но никто ничего не предъявлял
+
+    from billing.services.issuing import issue_invoice
+    issue_invoice(draft)
+    draft.refresh_from_db()
+    assert draft.is_issued and draft.due_date is not None
 
 
-def test_invoice_has_no_moment_of_issuance():
-    """Ни даты предъявления, ни срока оплаты у счёта нет.
+def test_invoice_has_a_moment_of_issuance_and_a_due_date():
+    """№35 исправлен (E4): у счёта есть момент предъявления и срок оплаты.
 
-    Отсюда следствия: нечего уведомлять, не от чего отсчитывать просрочку и
-    нечего делать неизменяемым. Поля появляются на шаге E4 (ADR-0013).
+    Отсюда всё остальное: есть что уведомлять, от чего отсчитывать просрочку
+    и что делать неизменяемым (ADR-0013).
     """
     fields = {f.name for f in MonthlyStatement._meta.get_fields()}
-    assert "issued_at" not in fields
-    assert "due_date" not in fields
+    assert "issued_at" in fields
+    assert "due_date" in fields
 
 
-def test_invoice_is_silently_rewritten_by_a_later_reading():
-    """Правка показания переписывает уже существующий счёт на месте.
-
-    После E4 предъявленный счёт неизменяем, а пересчёт даёт корректировку.
-    """
+def test_a_draft_is_rewritten_but_an_issued_invoice_is_not():
+    """Черновик пересчитывается на месте — это и есть сценарий «увидел
+    сумму»; выставленный счёт неизменяем (E4): пересчёт отказывает, ревизии
+    придут со своим шагом."""
     apartment = _apartment()
     _tariffs()
     period = date(2026, 7, 1)
@@ -196,8 +194,13 @@ def test_invoice_is_silently_rewritten_by_a_later_reading():
         value=Decimal("120"))
     second = generate_statement(apartment, period)
 
-    assert second.pk == first.pk                 # тот же счёт, не корректировка
+    assert second.pk == first.pk                 # черновик — тот же счёт
     assert second.total == Decimal("1450.00")    # (120-100)*48.15 + 487.00
+
+    from billing.services.issuing import InvoiceAlreadyIssued, issue_invoice
+    issue_invoice(second)
+    with pytest.raises(InvoiceAlreadyIssued):
+        generate_statement(apartment, period)
 
 
 def test_statement_generation_is_triggered_from_three_places():

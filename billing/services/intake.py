@@ -22,6 +22,11 @@ class NoUnpaidStatementError(Exception):
     """Нет непогашенного счёта, к которому можно отнести платёж."""
 
 
+class InvoiceNotIssued(Exception):
+    """Платёж относится к выставленному счёту: черновик — ещё не документ,
+    по нему не платят (шаг E4)."""
+
+
 class PositiveAmountRequired(Exception):
     """Подтверждение требует суммы, и она строго положительна (инв. 2
     спецификации Payments)."""
@@ -45,6 +50,7 @@ def earliest_unpaid_statement(contract):
     candidates = (MonthlyStatement.objects
                   .filter(Q(tenancy_id=contract.tenancy_id)
                           | Q(apartment_id=contract.property_id, tenancy_id=None))
+                  .exclude(issued_at=None)   # платят по выставленным (E4)
                   .order_by("period"))
     return next((s for s in candidates if s.status == MonthlyStatement.UNPAID),
                 None)
@@ -87,6 +93,9 @@ def record_payment(statement, amount, note=""):
 
     Платёж рождается сразу подтверждённым — владелец и есть подтверждающий.
     """
+    if not statement.is_issued:
+        raise InvoiceNotIssued(
+            f"Счёт {statement} не выставлен — сначала предъявите его.")
     payment = Payment.objects.create(
         statement=statement, source=Payment.MANUAL, status=Payment.CONFIRMED,
         amount=_checked(amount), note=note)

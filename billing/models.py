@@ -76,6 +76,13 @@ class MonthlyStatement(models.Model):
     period = models.DateField("Период")
     lines = models.JSONField("Строки начисления", default=list)
     total = models.DecimalField("Итого", max_digits=12, decimal_places=2, default=Decimal("0"))
+    #: Момент предъявления (шаг E4, дефект №35). Пусто — черновик: он
+    #: пересчитывается сколько угодно, его никто не предъявлял. Выставленный
+    #: счёт неизменяем (инв. 2 Billing).
+    issued_at = models.DateTimeField("Выставлен", null=True, blank=True)
+    #: Срок оплаты фиксируется в счёте значением в момент выставления
+    #: (ADR-0013): смена политики не делает старые счета просроченными.
+    due_date = models.DateField("Оплатить до", null=True, blank=True)
 
     class Meta:
         verbose_name = "Начисление"
@@ -87,6 +94,10 @@ class MonthlyStatement(models.Model):
             fields=("tenancy_id", "period"),
             name="one_statement_per_tenancy_period")]
         ordering = ["-period"]
+
+    @property
+    def is_issued(self) -> bool:
+        return self.issued_at is not None
 
     @property
     def settled_total(self) -> Decimal:
@@ -113,6 +124,28 @@ class MonthlyStatement(models.Model):
 
     def __str__(self):
         return f"{self.apartment} {self.period:%Y-%m} — {self.total} ₽"
+
+
+class BillingPolicy(models.Model):
+    """Политика срока оплаты — единая для всех счетов установки (ADR-0013).
+
+    Число дней от выставления; на P2, когда договоры станут разными, срок
+    переедет в Tenancy — ожидаемое развитие, а не исправление ошибки.
+    """
+
+    due_days = models.PositiveSmallIntegerField("Дней на оплату", default=10)
+
+    class Meta:
+        verbose_name = "Политика счетов"
+        verbose_name_plural = "Политика счетов"
+
+    @classmethod
+    def get(cls) -> "BillingPolicy":
+        row = cls.objects.first()
+        return row if row is not None else cls.objects.create()
+
+    def __str__(self):
+        return f"Срок оплаты: {self.due_days} дн. от выставления"
 
 
 class Settlement(models.Model):

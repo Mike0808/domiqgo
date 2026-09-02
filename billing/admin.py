@@ -15,12 +15,13 @@ from modules.metering.infrastructure.models import (
     Meter, MeterReading, PeriodLock,
 )
 from .models import (
-    Apartment, Tenant, MonthlyStatement, Document, Payment,
+    Apartment, BillingPolicy, Tenant, MonthlyStatement, Document, Payment,
 )
 from .services.statements import generate_statement, missing_meters
 from .services.intake import (
     PositiveAmountRequired, confirm_payment, record_payment, reject_payment,
 )
+from .services.issuing import issue_invoice
 from .services.settlement import rebuild_settlement, settlement_matches_journal
 
 @admin.register(Apartment)
@@ -394,8 +395,29 @@ class PaymentInline(admin.TabularInline):
 @admin.register(MonthlyStatement)
 class MonthlyStatementAdmin(admin.ModelAdmin):
     list_display = ("apartment", "period", "total", "settled", "status",
-                    "contract")
-    list_filter = ("apartment", ("tenancy_id", admin.EmptyFieldListFilter))
+                    "issued", "contract")
+    list_filter = ("apartment", ("issued_at", admin.EmptyFieldListFilter),
+                   ("tenancy_id", admin.EmptyFieldListFilter))
+
+    @admin.display(description="Выставлен", ordering="issued_at")
+    def issued(self, obj):
+        if obj.issued_at is None:
+            return format_html('<span style="color:#b32d2e">черновик</span>')
+        due = f", оплатить до {obj.due_date:%d.%m.%Y}" if obj.due_date else ""
+        return f"{obj.issued_at:%d.%m.%Y}{due}"
+
+    def changelist_view(self, request, extra_context=None):
+        """Напоминание о несвыставленных черновиках (план шага E4): забытый
+        черновик — это жилец, который не получит счёт и не заплатит, а
+        система будет считать, что всё идёт как надо."""
+        drafts = MonthlyStatement.objects.filter(issued_at=None).count()
+        if drafts and request.method == "GET":
+            self.message_user(
+                request,
+                f"Черновиков, не выставленных жильцам: {drafts}. Пока счёт "
+                "не выставлен, жилец его не оплатит, а срок не идёт.",
+                level=messages.WARNING)
+        return super().changelist_view(request, extra_context)
 
     @admin.display(description="Признано")
     def settled(self, obj):
@@ -410,7 +432,21 @@ class MonthlyStatementAdmin(admin.ModelAdmin):
             return format_html('<span style="color:#b32d2e">без договора</span>')
         return f"#{obj.tenancy_id}"
     date_hierarchy = "period"
-    actions = [regenerate_statements, "rebuild_settlements"]
+    actions = [regenerate_statements, "issue_invoices", "rebuild_settlements"]
+
+    @admin.action(description="Выставить счета")
+    def issue_invoices(self, request, queryset):
+        """Предъявление — команда: срок оплаты, замок периода, событие."""
+        issued = 0
+        for stmt in queryset:
+            try:
+                issue_invoice(stmt)
+                issued += 1
+            except Exception as exc:
+                self.message_user(request, f"{stmt}: {exc}",
+                                  level=messages.ERROR)
+        if issued:
+            self.message_user(request, f"Выставлено счетов: {issued}.")
     inlines = [PaymentInline]
 
     @admin.action(description="Пересобрать сверку оплат")
@@ -426,6 +462,19 @@ class MonthlyStatementAdmin(admin.ModelAdmin):
                 f"{stmt}: признано {total} ₽ — "
                 + ("сходится с журналом." if ok else "НЕ сходится с журналом!"),
                 level=messages.INFO if ok else messages.ERROR)
+
+@admin.register(BillingPolicy)
+class BillingPolicyAdmin(admin.ModelAdmin):
+    """Единственная строка: политика одна на установку (ADR-0013)."""
+
+    list_display = ("__str__",)
+
+    def has_add_permission(self, request):
+        return not BillingPolicy.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
 
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
