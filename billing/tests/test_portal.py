@@ -114,8 +114,9 @@ def test_tenant_cannot_see_other_apartment_history(tenant_setup):
 def test_paid_month_locks_readings(tenant_setup):
     a, u = tenant_setup
     period = _period_first_of_this_month()
-    MonthlyStatement.objects.create(apartment=a, period=period, total=Decimal("500"),
-                                    status=MonthlyStatement.PAID, tenancy_id=_cid(u))
+    from billing.tests.settle import settle
+    settle(MonthlyStatement.objects.create(
+        apartment=a, period=period, total=Decimal("500"), tenancy_id=_cid(u)))
     c = _login(u)
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
     assert resp.status_code == 302               # rejected with a message, not applied
@@ -129,8 +130,9 @@ def test_paid_month_locks_readings(tenant_setup):
 def test_pending_month_locks_readings(tenant_setup):
     a, u = tenant_setup
     period = _period_first_of_this_month()
-    MonthlyStatement.objects.create(apartment=a, period=period, total=Decimal("500"),
-                                    status=MonthlyStatement.PENDING, tenancy_id=_cid(u))
+    from billing.tests.settle import pend
+    pend(MonthlyStatement.objects.create(
+        apartment=a, period=period, total=Decimal("500"), tenancy_id=_cid(u)))
     c = _login(u)
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
     assert resp.status_code == 302               # rejected with a message, not applied

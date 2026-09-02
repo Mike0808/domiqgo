@@ -1,12 +1,31 @@
+"""Платёжный поток: чек, подтверждение, отклонение, ручная отметка.
+
+С шага E3 поток не пишет в счёт ни строчки (дефект №15): статус счёта —
+результат сверки в Billing, а сюда входит только платёж. Каждый переход
+публикует событие; события — контракты `modules/payments/events`, и публикация
+переедет в модуль при расформировании `billing/`.
+"""
+
 from django.db import transaction
-from ..models import MonthlyStatement, Payment
+from django.db.models import Q
+from django.utils import timezone
+
+from bus import publish
+from modules.payments.events import (
+    PaymentConfirmed, PaymentRejected, PaymentSubmitted,
+)
+
+from ..models import MonthlyStatement, Payment, Settlement
+
 
 class NoUnpaidStatementError(Exception):
-    """No statement with status 'unpaid' to attach a receipt to."""
+    """Нет непогашенного счёта, к которому можно отнести платёж."""
+
 
 class PositiveAmountRequired(Exception):
     """Подтверждение требует суммы, и она строго положительна (инв. 2
     спецификации Payments)."""
+
 
 def _checked(amount):
     if amount is None or amount <= 0:
@@ -14,25 +33,25 @@ def _checked(amount):
             f"Сумма платежа обязана быть больше нуля, получено: {amount}.")
     return amount
 
+
 def earliest_unpaid_statement(contract):
     """Самый ранний непогашенный счёт договора (правило — ADR-0014).
 
+    Непогашенный — по сверке, а не по полю; счёт с заявленным платежом
+    пропускается: чек уже ждёт решения владельца, второй туда не кладут.
     Счета без договора (наследие миграции E2) учитываются по квартире
-    договора: они ничьи, пока владелец не разберёт их вручную, но платёж
-    жильца этой квартиры чаще всего про них. Уйдёт вместе с legacy-`billing/`.
+    договора и уйдут вместе с legacy-`billing/`.
     """
-    from django.db.models import Q
+    candidates = (MonthlyStatement.objects
+                  .filter(Q(tenancy_id=contract.tenancy_id)
+                          | Q(apartment_id=contract.property_id, tenancy_id=None))
+                  .order_by("period"))
+    return next((s for s in candidates if s.status == MonthlyStatement.UNPAID),
+                None)
 
-    return (MonthlyStatement.objects
-            .filter(Q(tenancy_id=contract.tenancy_id)
-                    | Q(apartment_id=contract.property_id, tenancy_id=None),
-                    status=MonthlyStatement.UNPAID)
-            .order_by("period").first())
 
 @transaction.atomic
 def attach_receipt(tenant, file, source, filename=None):
-    from django.utils import timezone
-
     from modules.tenancy import api as tenancy
 
     contract = tenancy.active_tenancy_for_account(tenant.user_id,
@@ -43,56 +62,54 @@ def attach_receipt(tenant, file, source, filename=None):
     payment = Payment(statement=stmt, source=source)
     payment.file.save(filename or getattr(file, "name", "receipt"), file, save=False)
     payment.save()
-    stmt.status = MonthlyStatement.PENDING
-    stmt.save(update_fields=["status"])
+    publish(PaymentSubmitted(payment_id=payment.pk, statement_id=stmt.pk,
+                             source=source, at=timezone.now()))
     return payment
+
 
 @transaction.atomic
 def confirm_payment(payment, amount):
     """Признать заявленный платёж и указать сумму (шаг E1).
 
-    Сумма появляется у платежа только здесь: заявленный чек — ещё не деньги.
-    Статус счёта пока проставляется по-старому — его судьба решается на E3.
+    Счёт не трогается: погашение выведет сверка, услышав событие (E3).
     """
     payment.amount = _checked(amount)
     payment.status = Payment.CONFIRMED
     payment.save(update_fields=["status", "amount"])
-    stmt = payment.statement
-    stmt.status = MonthlyStatement.PAID
-    stmt.save(update_fields=["status"])
+    publish(PaymentConfirmed(payment_id=payment.pk,
+                             statement_id=payment.statement_id,
+                             amount=payment.amount, at=timezone.now()))
 
 
 @transaction.atomic
 def record_payment(statement, amount, note=""):
     """Отметить полученный платёж вручную, без чека (шаг E1).
 
-    Роадмап относит ручную отметку к P1, но команды до сих пор не было:
-    владелец, получивший наличные, был вынужден просить чек ради
-    формальности. Платёж рождается сразу подтверждённым — владелец
-    и есть подтверждающий.
+    Платёж рождается сразу подтверждённым — владелец и есть подтверждающий.
     """
     payment = Payment.objects.create(
         statement=statement, source=Payment.MANUAL, status=Payment.CONFIRMED,
         amount=_checked(amount), note=note)
-    statement.status = MonthlyStatement.PAID
-    statement.save(update_fields=["status"])
+    publish(PaymentConfirmed(payment_id=payment.pk, statement_id=statement.pk,
+                             amount=payment.amount, at=timezone.now()))
     return payment
 
-def _revert_if_no_pending(stmt):
-    """Drop a statement back to UNPAID once no PENDING payment remains,
-    unless it's already PAID — a landlord-confirmed payment must never be
-    silently undone by rejecting/deleting an unrelated stray receipt."""
-    if (stmt.status != MonthlyStatement.PAID
-            and not stmt.payments.filter(status=Payment.PENDING).exists()):
-        stmt.status = MonthlyStatement.UNPAID
-        stmt.save(update_fields=["status"])
 
 @transaction.atomic
 def reject_payment(payment, note=""):
+    """Отклонить заявленный платёж.
+
+    Сумма отклонённого в сверке никогда не участвовала — Billing событие не
+    слушает, счёт возвращается к «не оплачено» сам, силой вычисления.
+    Прежняя защита `_revert_if_no_pending` исчезла вместе с полем, которое
+    она стерегла.
+    """
     payment.status = Payment.REJECTED
     fields = ["status"]
     if note:
         payment.note = note
         fields.append("note")
     payment.save(update_fields=fields)
-    _revert_if_no_pending(payment.statement)
+    publish(PaymentRejected(payment_id=payment.pk,
+                            statement_id=payment.statement_id,
+                            reason=note, at=timezone.now()))

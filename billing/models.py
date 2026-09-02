@@ -60,8 +60,12 @@ class Tenant(models.Model):
 # через `modules.metering.api`.
 
 class MonthlyStatement(models.Model):
+    #: Статус — не поле, а результат сверки (шаг E3, ADR-0015, дефект №15):
+    #: признанные суммы сравниваются с итогом. Константы остались — ими
+    #: говорят шаблоны, портал и тесты.
     UNPAID = "unpaid"; PENDING = "pending"; PAID = "paid"
-    STATUS_CHOICES = [(UNPAID, "Не оплачено"), (PENDING, "На проверке"), (PAID, "Оплачено")]
+    STATUS_LABELS = {UNPAID: "Не оплачено", PENDING: "На проверке",
+                     PAID: "Оплачено"}
 
     apartment = models.ForeignKey(Apartment, on_delete=models.PROTECT, related_name="statements")
     #: Договор, которому выставлен счёт (шаг E2, ADR-0024) — идентификатором,
@@ -72,7 +76,6 @@ class MonthlyStatement(models.Model):
     period = models.DateField("Период")
     lines = models.JSONField("Строки начисления", default=list)
     total = models.DecimalField("Итого", max_digits=12, decimal_places=2, default=Decimal("0"))
-    status = models.CharField("Статус", max_length=10, choices=STATUS_CHOICES, default=UNPAID)
 
     class Meta:
         verbose_name = "Начисление"
@@ -85,8 +88,52 @@ class MonthlyStatement(models.Model):
             name="one_statement_per_tenancy_period")]
         ordering = ["-period"]
 
+    @property
+    def settled_total(self) -> Decimal:
+        """Признанная оплата — из проекции, которую ведёт сверка (E3)."""
+        row = Settlement.objects.filter(statement_id=self.pk).first()
+        return row.confirmed_total if row is not None else Decimal("0")
+
+    @property
+    def status(self) -> str:
+        """Погашен, если признано не меньше итога; «на проверке», пока есть
+        заявленный платёж. Частичная оплата счёт не закрывает — в этом смысл
+        сверки (Q3 карты: «хватило ли»)."""
+        settled = self.settled_total
+        if settled > 0 and settled >= self.total:
+            return self.PAID
+        if self.payments.filter(status=Payment.PENDING).exists():
+            return self.PENDING
+        return self.UNPAID
+
+    def get_status_display(self) -> str:
+        """Имя как у поля с choices — шаблоны не заметили исчезновения
+        колонки."""
+        return self.STATUS_LABELS[self.status]
+
     def __str__(self):
         return f"{self.apartment} {self.period:%Y-%m} — {self.total} ₽"
+
+
+class Settlement(models.Model):
+    """Проекция признанных оплат по счёту (ADR-0015).
+
+    Строится исключительно из событий PaymentConfirmed и PaymentVoided и
+    обязана быть перестраиваемой из журнала шины — `RebuildSettlement`.
+    Осознанное дублирование: источник истины по платежам — платёжный контур,
+    но спрашивать его Billing не может, не замкнув цикл (ADR-0014).
+    """
+
+    statement_id = models.PositiveIntegerField("Начисление", unique=True)
+    confirmed_total = models.DecimalField(
+        "Признано", max_digits=12, decimal_places=2, default=Decimal("0"))
+
+    class Meta:
+        verbose_name = "Сверка оплат"
+        verbose_name_plural = "Сверка оплат"
+
+    def __str__(self):
+        return f"Счёт #{self.statement_id}: признано {self.confirmed_total} ₽"
 
 def document_upload_path(instance, filename):
     return f"documents/tenant_{instance.tenant_id}/{filename}"

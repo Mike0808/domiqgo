@@ -8,7 +8,7 @@ import pytest
 from billing.models import Apartment, Tenant, MonthlyStatement, Payment
 from billing.services.intake import attach_receipt
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 @pytest.fixture
 def admin_client():
@@ -28,7 +28,7 @@ def _pending_payment():
     let_in(a, account_id=u.pk)   # платёж ищет счёт договора (шаг E2)
     t = Tenant.objects.create(user=u, apartment=a)
     MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1),
-                                    status="unpaid", total=Decimal("21500"))
+                                    total=Decimal("21500"))
     return attach_receipt(t, ContentFile(b"img", name="r.jpg"), source=Payment.TELEGRAM)
 
 def test_payment_changelist_loads(admin_client, media_isolation):
@@ -51,7 +51,7 @@ def test_recording_a_manual_payment_from_the_admin(admin_client, media_isolation
     """Ручная отметка (шаг E1): счёт, сумма, примечание — без чека."""
     a = Apartment.objects.create(label="кв")
     stmt = MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1),
-                                           status="unpaid", total=Decimal("21500"))
+                                           total=Decimal("21500"))
     resp = admin_client.post("/admin/billing/payment/add/", {
         "statement": str(stmt.pk), "amount": "21500", "note": "наличными"})
     assert resp.status_code == 302
@@ -82,10 +82,10 @@ def test_delete_payment_removes_file_and_reverts_status(admin_client, media_isol
     assert MonthlyStatement.objects.get().status == MonthlyStatement.UNPAID
 
 def test_delete_stray_pending_on_paid_statement_keeps_it_paid(admin_client, media_isolation):
+    from billing.tests.settle import settle
     p = _pending_payment()
     stmt = p.statement
-    stmt.status = MonthlyStatement.PAID
-    stmt.save(update_fields=["status"])
+    settle(stmt)   # оплаченность вычисляется — фабрикуем сверку (E3)
     admin_client.post(f"/admin/billing/payment/{p.pk}/delete/", {"post": "yes"})
     assert not Payment.objects.filter(pk=p.pk).exists()
     stmt.refresh_from_db()

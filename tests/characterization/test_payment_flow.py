@@ -22,7 +22,7 @@ from django.test import Client
 from billing.models import Apartment, MonthlyStatement, Payment, Tenant
 from billing.services.intake import attach_receipt, confirm_payment, reject_payment
 
-pytestmark = [pytest.mark.django_db, pytest.mark.characterization]
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.characterization]
 
 
 def _tenant_with_unpaid_invoice():
@@ -33,8 +33,7 @@ def _tenant_with_unpaid_invoice():
     let_in(apartment, account_id=user.pk)   # платёж ищет счёт договора (E2)
     tenant = Tenant.objects.create(user=user, apartment=apartment)
     invoice = MonthlyStatement.objects.create(
-        apartment=apartment, period=date(2026, 7, 1), total=Decimal("1000.00"),
-        status=MonthlyStatement.UNPAID)
+        apartment=apartment, period=date(2026, 7, 1), total=Decimal("1000.00"))
     return tenant, invoice
 
 
@@ -50,11 +49,11 @@ def _landlord_client():
 # --------------------------------------------------------------------------
 
 def test_every_payment_step_writes_the_invoice_status(media_isolation):
-    """Три операции над платежом изменяют строку счёта.
+    """№15 исправлен (E3): платёжный поток не пишет в счёт ни строчки.
 
-    После E3 Payments не пишет в счёт вовсе: статус вычисляется Billing'ом как
-    проекция признанных оплат (ADR-0015), а `_revert_if_no_pending` исчезает
-    целиком вместе с импортом её из `admin.py`.
+    Статус вычисляется Billing'ом из проекции признанных оплат (ADR-0015);
+    те же переходы видны снаружи, но за ними — сверка, а не запись поля.
+    `_revert_if_no_pending` исчезла вместе с колонкой, которую стерегла.
     """
     tenant, invoice = _tenant_with_unpaid_invoice()
 
@@ -75,19 +74,17 @@ def test_every_payment_step_writes_the_invoice_status(media_isolation):
 
 
 def test_invoice_status_is_a_stored_field_answerable_to_nothing():
-    """Счёт можно объявить оплаченным, не имея ни одного платежа.
+    """№15 исправлен (E3): объявить счёт оплаченным без платежа больше нельзя.
 
-    Сегодня статус — колонка, которую вправе поставить кто угодно. После E3
-    такое состояние непредставимо: проекция сходится с журналом событий, а
-    `RebuildSettlement` её пересобирает.
+    Колонки нет — статус вычисляется, и записать в него нечего; проекция
+    сходится с журналом событий, `RebuildSettlement` её пересобирает.
     """
     _, invoice = _tenant_with_unpaid_invoice()
 
-    invoice.status = MonthlyStatement.PAID
-    invoice.save(update_fields=["status"])
+    with pytest.raises(AttributeError):
+        invoice.status = MonthlyStatement.PAID
 
-    invoice.refresh_from_db()
-    assert invoice.status == MonthlyStatement.PAID
+    assert invoice.status == MonthlyStatement.UNPAID
     assert invoice.payments.count() == 0
 
 

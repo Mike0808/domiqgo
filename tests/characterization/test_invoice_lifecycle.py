@@ -124,11 +124,15 @@ def test_reading_lock_follows_payment_status(status, locked):
     _tariffs()
     _, user = _tenant(apartment, "ivanov")
     period = _current_period()
+    from billing.tests.settle import pend, settle
     from modules.tenancy import api as tenancy_api
-    MonthlyStatement.objects.create(
+    stmt = MonthlyStatement.objects.create(
         apartment=apartment, period=period, total=Decimal("500.00"),
-        status=status,
         tenancy_id=tenancy_api.tenancy_for(apartment.pk, period).tenancy_id)
+    if status == MonthlyStatement.PAID:
+        settle(stmt)
+    elif status == MonthlyStatement.PENDING:
+        pend(stmt)
     client = _login(user)
 
     assert client.get("/").context["locked"] is locked

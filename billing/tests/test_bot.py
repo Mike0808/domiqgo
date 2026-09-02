@@ -54,7 +54,7 @@ def test_start_with_bad_code_reports_error():
 
 def test_photo_from_linked_tenant_attaches_receipt(media_isolation):
     t, a = _tenant(chat_id=555)
-    MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1), status="unpaid")
+    MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1))
     adapter = FakeAdapter(file_bytes=b"receipt-bytes")
     reply = process_message(adapter, _msg(file_id="photo123"))
     assert "на проверку" in reply.lower()
@@ -72,7 +72,8 @@ def test_photo_from_unlinked_chat_is_refused():
 
 def test_photo_with_no_unpaid_statement_is_reported():
     t, a = _tenant(chat_id=555)
-    MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1), status="paid")
+    from billing.tests.settle import settle
+    settle(MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1)))
     reply = process_message(FakeAdapter(), _msg(file_id="photo123"))
     assert "нет неоплаченных" in reply.lower()
 

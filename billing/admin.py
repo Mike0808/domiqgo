@@ -20,8 +20,8 @@ from .models import (
 from .services.statements import generate_statement, missing_meters
 from .services.intake import (
     PositiveAmountRequired, confirm_payment, record_payment, reject_payment,
-    _revert_if_no_pending,
 )
+from .services.settlement import rebuild_settlement, settlement_matches_journal
 
 @admin.register(Apartment)
 class ApartmentAdmin(admin.ModelAdmin):
@@ -374,10 +374,10 @@ class PaymentAdmin(admin.ModelAdmin):
             '<a href="{}" target="_blank"><img src="{}" style="max-height:120px"></a>', url, url)
 
     def _delete_with_file(self, payment):
+        # Статуса-поля больше нет — откатывать нечего: сверка вычисляется.
+        # Само удаление уступит место VoidPayment на шаге E5.
         payment.file.delete(save=False)
-        stmt = payment.statement
         payment.delete()
-        _revert_if_no_pending(stmt)
 
     def delete_model(self, request, obj):
         self._delete_with_file(obj)
@@ -393,9 +393,13 @@ class PaymentInline(admin.TabularInline):
 
 @admin.register(MonthlyStatement)
 class MonthlyStatementAdmin(admin.ModelAdmin):
-    list_display = ("apartment", "period", "total", "status", "contract")
-    list_filter = ("status", "apartment",
-                   ("tenancy_id", admin.EmptyFieldListFilter))
+    list_display = ("apartment", "period", "total", "settled", "status",
+                    "contract")
+    list_filter = ("apartment", ("tenancy_id", admin.EmptyFieldListFilter))
+
+    @admin.display(description="Признано")
+    def settled(self, obj):
+        return obj.settled_total
 
     @admin.display(description="Договор", ordering="tenancy_id")
     def contract(self, obj):
@@ -406,8 +410,22 @@ class MonthlyStatementAdmin(admin.ModelAdmin):
             return format_html('<span style="color:#b32d2e">без договора</span>')
         return f"#{obj.tenancy_id}"
     date_hierarchy = "period"
-    actions = [regenerate_statements]
+    actions = [regenerate_statements, "rebuild_settlements"]
     inlines = [PaymentInline]
+
+    @admin.action(description="Пересобрать сверку оплат")
+    def rebuild_settlements(self, request, queryset):
+        """`RebuildSettlement` — из интерфейса, а не только из консоли:
+        расхождение проекции с фактами обнаружит владелец, увидев счёт
+        «не оплаченным» (ADR-0015)."""
+        for stmt in queryset:
+            total = rebuild_settlement(stmt.pk)
+            ok = settlement_matches_journal(stmt.pk)
+            self.message_user(
+                request,
+                f"{stmt}: признано {total} ₽ — "
+                + ("сходится с журналом." if ok else "НЕ сходится с журналом!"),
+                level=messages.INFO if ok else messages.ERROR)
 
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):

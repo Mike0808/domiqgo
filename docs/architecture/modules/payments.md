@@ -127,8 +127,8 @@ Payments спрашивал Billing про непогашенные счета, 
 
 | Событие | Когда | Payload (понятия) | Кто слушает |
 |---|---|---|---|
-| `PaymentSubmitted` | после `SubmitReceipt` | платёж, счёт, источник, момент | P1: Notifications (владельцу — «пришёл чек») |
-| `PaymentConfirmed` | после `ConfirmPayment` и `RecordPayment` | платёж, счёт, сумма, момент | P1: **Billing** (сверка), Notifications (жильцу) |
+| `PaymentSubmitted` | после `SubmitReceipt` | ✔ **E3** (контракт и публикация из легаси): платёж, счёт, источник, момент | P1: Notifications (владельцу — «пришёл чек») — этап F |
+| `PaymentConfirmed` | после `ConfirmPayment` и `RecordPayment` | ✔ **E3** (контракт и публикация из легаси): платёж, счёт, сумма, момент | P1: **Billing** (сверка) ✔, Notifications (жильцу) — этап F |
 | `PaymentRejected` | после `RejectPayment` | платёж, счёт, причина, момент | P1: Notifications (жильцу — «чек не принят») |
 | `PaymentVoided` | после `VoidPayment` | платёж, счёт, отменённая сумма, причина, момент | P1: **Billing** (пересчёт сверки), Notifications |
 

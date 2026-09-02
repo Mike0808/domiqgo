@@ -104,8 +104,8 @@ def test_generate_is_idempotent_and_keeps_status():
     MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), resource="electricity_single", value=Decimal("1500"))
 
     stmt = generate_statement(a, date(2026, 7, 1))
-    stmt.status = MonthlyStatement.PAID
-    stmt.save()
+    from billing.tests.settle import settle
+    settle(stmt)   # оплаченность теперь вычисляется — фабрикуем сверку
     again = generate_statement(a, date(2026, 7, 1))
     assert again.pk == stmt.pk
     assert again.status == MonthlyStatement.PAID
