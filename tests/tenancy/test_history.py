@@ -112,3 +112,56 @@ def test_an_empty_property_has_no_tenancy_of_record():
 def test_terms_are_immutable():
     with pytest.raises(FrozenInstanceError):
         TERMS.rent = Decimal("1")
+
+
+# --------------------------------------------- исправление сведений (D2)
+
+def test_correcting_the_date_confirms_it():
+    draft = Tenancy(tenancy_id=1, property_id=7, account_id=1, full_name="Иванов",
+                    started_on=date(2026, 9, 1), terms=TERMS, start_confirmed=False)
+
+    corrected, changes = draft.correct(started_on=date(2026, 3, 1))
+
+    assert corrected.start_confirmed is True
+    assert changes == ("started_on: 2026-09-01 -> 2026-03-01",)
+
+
+def test_confirming_the_proposed_date_changes_nothing_but_the_mark():
+    draft = Tenancy(tenancy_id=1, property_id=7, account_id=1, full_name="Иванов",
+                    started_on=date(2026, 9, 1), terms=TERMS, start_confirmed=False)
+
+    corrected, changes = draft.correct(started_on=date(2026, 9, 1))
+
+    assert corrected.start_confirmed is True and changes == ()
+
+
+def test_correcting_terms_names_each_changed_amount():
+    t = _tenancy(date(2026, 3, 1), tenancy_id=1)
+
+    _, changes = t.correct(terms=Terms(rent=Decimal("35000"), internet=Decimal("500")))
+
+    assert changes == ("rent: 30000 -> 35000",)
+
+
+def test_a_correction_may_not_land_on_a_confirmed_neighbour():
+    """Подтверждённый договор занимает период по-настоящему."""
+    confirmed = _tenancy(date(2026, 1, 1), ended=date(2026, 6, 30), tenancy_id=1)
+    draft = Tenancy(tenancy_id=2, property_id=7, account_id=2, full_name="Иванова",
+                    started_on=date(2026, 7, 1), terms=TERMS, start_confirmed=False)
+    history = PropertyHistory(7, [confirmed, draft])
+
+    with pytest.raises(PeriodOverlap):
+        history.correct(draft.correct(started_on=date(2026, 5, 1))[0])
+
+
+def test_a_correction_ignores_unconfirmed_drafts():
+    """Черновики миграции не запирают диалог подтверждения."""
+    other_draft = Tenancy(tenancy_id=1, property_id=7, account_id=1, full_name="Иванов",
+                          started_on=date(2026, 9, 1), terms=TERMS, start_confirmed=False)
+    draft = Tenancy(tenancy_id=2, property_id=7, account_id=2, full_name="Иванова",
+                    started_on=date(2026, 9, 1), terms=TERMS, start_confirmed=False)
+    history = PropertyHistory(7, [other_draft, draft])
+
+    corrected = history.correct(draft.correct(started_on=date(2026, 9, 1))[0])
+
+    assert corrected.start_confirmed is True

@@ -124,3 +124,81 @@ def test_the_real_decommission_command_reaches_tenancy(flat):
 
     with pytest.raises(api.PropertyOutOfService):
         api.start_tenancy(flat, IVANOV, "Иванов", date(2026, 9, 1), TERMS)
+
+
+# ------------------------------------------ исправление и продление (D2)
+
+def test_correcting_the_proposed_date_confirms_the_draft(flat):
+    from billing.tests.tenancies import draft as make_draft
+
+    class _Flat:  # черновик, как его оставила миграция D1a
+        pk = flat
+    draft_id = make_draft(_Flat, 11, started_on=date(2026, 9, 1))
+
+    api.correct_tenancy(draft_id, started_on=date(2026, 3, 1))
+
+    corrected = api.get_tenancy(draft_id)
+    assert corrected.start_confirmed and corrected.started_on == date(2026, 3, 1)
+
+
+def test_a_correction_tells_the_world_what_changed(flat, received):
+    from modules.tenancy.events import TenancyCorrected
+    events = []
+    subscribe(TenancyCorrected, events.append)
+    tenancy_id = api.start_tenancy(flat, IVANOV, "Иванов", date(2026, 3, 1), TERMS)
+
+    api.correct_tenancy(tenancy_id, terms=api.Terms(rent=Decimal("35000")))
+
+    (event,) = events
+    assert (event.tenancy_id, event.property_id) == (tenancy_id, flat)
+    assert [c.split(":")[0] for c in event.changes] == ["rent", "internet"]
+    assert "35000" in event.changes[0]
+
+
+def test_confirming_without_changes_is_not_a_correction(flat):
+    """Событие — только про изменение; подтверждение им не является."""
+    from modules.tenancy.events import TenancyCorrected
+    from billing.tests.tenancies import draft as make_draft
+    events = []
+    subscribe(TenancyCorrected, events.append)
+
+    class _Flat:
+        pk = flat
+    draft_id = make_draft(_Flat, 11, started_on=date(2026, 9, 1))
+    api.correct_tenancy(draft_id, started_on=date(2026, 9, 1))
+
+    assert api.get_tenancy(draft_id).start_confirmed and events == []
+
+
+def test_only_one_date_of_a_crowded_flat_can_be_confirmed(flat):
+    """Квартира с двумя жильцами: первый подтверждает, второй ждёт D3."""
+    from billing.tests.tenancies import draft as make_draft
+
+    class _Flat:
+        pk = flat
+    first = make_draft(_Flat, 11, started_on=date(2026, 9, 1))
+    second = make_draft(_Flat, 12, started_on=date(2026, 9, 1))
+    api.correct_tenancy(first, started_on=date(2026, 9, 1))
+
+    with pytest.raises(api.PeriodOverlap):
+        api.correct_tenancy(second, started_on=date(2026, 9, 1))
+
+
+def test_renewal_ends_the_old_contract_the_day_before(flat, received):
+    old = api.start_tenancy(flat, IVANOV, "Иванов", date(2026, 1, 1), TERMS)
+
+    new = api.renew_tenancy(old, date(2026, 7, 1), api.Terms(rent=Decimal("35000")))
+
+    assert api.get_tenancy(old).ended_on == date(2026, 6, 30)
+    assert api.tenancy_for(flat, date(2026, 6, 1)).terms.rent == Decimal("30000")
+    assert api.tenancy_for(flat, date(2026, 7, 1)).terms.rent == Decimal("35000")
+    assert api.get_tenancy(new).account_id == IVANOV
+    assert [type(e).__name__ for e in received[-2:]] == ["TenancyEnded", "TenancyStarted"]
+
+
+def test_renewal_of_an_ended_contract_is_refused(flat):
+    old = api.start_tenancy(flat, IVANOV, "Иванов", date(2026, 1, 1), TERMS)
+    api.end_tenancy(old, date(2026, 5, 31))
+
+    with pytest.raises(api.AlreadyEnded):
+        api.renew_tenancy(old, date(2026, 7, 1), TERMS)

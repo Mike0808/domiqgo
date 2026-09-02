@@ -50,14 +50,37 @@ class PropertyHistory:
         if self.out_of_service:
             raise PropertyOutOfService(
                 f"объект #{self.property_id} выведен из эксплуатации")
-        clash = next((t for t in self._tenancies if t.overlaps(tenancy)), None)
+        self._ensure_free_for(tenancy, confirmed_only=False)
+        self._tenancies.append(tenancy)
+        self._tenancies.sort(key=lambda t: (t.started_on, t.tenancy_id or 0))
+        return tenancy
+
+    def correct(self, corrected: Tenancy) -> Tenancy:
+        """Принять исправленный договор на место прежнего.
+
+        Пересечение проверяется только с **подтверждёнными** соседями:
+        черновики миграции пересекаются между собой до D3, и требовать от
+        владельца распутать их прежде, чем он назовёт одну дату, значило бы
+        запереть диалог подтверждения. Подтверждённый договор при этом
+        занимает период по-настоящему: вторую дату той же квартиры на те же
+        дни подтвердить уже нельзя — это и есть вопрос шага D3.
+        """
+        self._ensure_free_for(corrected, confirmed_only=True)
+        self._tenancies = [corrected if t.tenancy_id == corrected.tenancy_id else t
+                           for t in self._tenancies]
+        self._tenancies.sort(key=lambda t: (t.started_on, t.tenancy_id or 0))
+        return corrected
+
+    def _ensure_free_for(self, tenancy: Tenancy, confirmed_only: bool) -> None:
+        others = (t for t in self._tenancies
+                  if t.tenancy_id is None or t.tenancy_id != tenancy.tenancy_id)
+        if confirmed_only:
+            others = (t for t in others if t.start_confirmed)
+        clash = next((t for t in others if t.overlaps(tenancy)), None)
         if clash is not None:
             raise PeriodOverlap(
                 f"объект #{self.property_id} занят договором #{clash.tenancy_id} "
                 f"с {clash.started_on:%d.%m.%Y}")
-        self._tenancies.append(tenancy)
-        self._tenancies.sort(key=lambda t: (t.started_on, t.tenancy_id or 0))
-        return tenancy
 
     def active_on(self, day: date) -> Tenancy | None:
         """Договор, чей период включает день. При пересечении (наследие

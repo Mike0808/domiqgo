@@ -38,3 +38,17 @@ class TenancyEnded:
     tenancy_id: int
     property_id: int
     ended_on: date
+
+
+@dataclass(frozen=True)
+class TenancyCorrected:
+    """Сведения договора исправлены: записанное было неверно с самого начала.
+
+    P1: Billing (пометить счета к пересмотру) — подписчик появится на этапе E.
+    `changes` — перечень строк вида «поле: было -> стало»: подписчик должен
+    понять, что именно изменилось, не обращаясь обратно в Tenancy.
+    """
+
+    tenancy_id: int
+    property_id: int
+    changes: tuple

@@ -78,6 +78,36 @@ class Tenancy:
             raise AlreadyEnded(f"договор уже завершён {self.ended_on:%d.%m.%Y}")
         return replace(self, ended_on=on)
 
+    def correct(self, *, started_on: date | None = None,
+                full_name: str | None = None,
+                terms: "Terms | None" = None) -> tuple["Tenancy", tuple[str, ...]]:
+        """Исправить сведения, записанные неверно с самого начала.
+
+        Не путать с продлением: продление — новый факт с новой датой,
+        исправление — признание ошибки. Возвращает исправленный договор и
+        перечень изменений для события `TenancyCorrected`.
+
+        Исправление даты заселения — это утверждение владельца о дате, и оно
+        же её подтверждает: неподтверждённой остаётся только дата, которую
+        предложила миграция и ещё никто не называл вслух.
+        """
+        changes: list[str] = []
+        corrected = self
+        if started_on is not None:
+            if started_on != self.started_on:
+                changes.append(f"started_on: {self.started_on} -> {started_on}")
+            corrected = replace(corrected, started_on=started_on, start_confirmed=True)
+        if full_name is not None and full_name != self.full_name:
+            changes.append(f"full_name: {self.full_name} -> {full_name}")
+            corrected = replace(corrected, full_name=full_name)
+        if terms is not None and terms != self.terms:
+            for field in ("rent", "internet", "other_fixed"):
+                was, became = getattr(self.terms, field), getattr(terms, field)
+                if was != became:
+                    changes.append(f"{field}: {was} -> {became}")
+            corrected = replace(corrected, terms=terms)
+        return corrected, tuple(changes)
+
     def overlaps(self, other: "Tenancy") -> bool:
         """Пересекаются ли периоды хотя бы одним днём."""
         return self.started_on <= _end_or_forever(other) and other.started_on <= _end_or_forever(self)
