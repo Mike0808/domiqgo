@@ -98,8 +98,9 @@ def receipt_upload_path(instance, filename):
     return f"receipts/statement_{instance.statement_id}/{filename}"
 
 class Payment(models.Model):
-    TELEGRAM = "telegram"; MAX = "max"; WEB = "web"
-    SOURCE_CHOICES = [(TELEGRAM, "Telegram"), (MAX, "MAX"), (WEB, "Веб")]
+    TELEGRAM = "telegram"; MAX = "max"; WEB = "web"; MANUAL = "manual"
+    SOURCE_CHOICES = [(TELEGRAM, "Telegram"), (MAX, "MAX"), (WEB, "Веб"),
+                      (MANUAL, "Вручную")]
     PENDING = "pending"; CONFIRMED = "confirmed"; REJECTED = "rejected"
     STATUS_CHOICES = [
         (PENDING, "На проверке"), (CONFIRMED, "Подтверждён"), (REJECTED, "Отклонён"),
@@ -107,7 +108,15 @@ class Payment(models.Model):
 
     statement = models.ForeignKey(MonthlyStatement, on_delete=models.CASCADE,
                                   related_name="payments")
-    file = models.FileField("Чек", upload_to=receipt_upload_path)
+    #: Чек необязателен (шаг E1): владелец отмечает наличную оплату вручную,
+    #: не прося фотографию ради формальности.
+    file = models.FileField("Чек", upload_to=receipt_upload_path, blank=True)
+    #: Подтверждённая сумма. Есть только у подтверждённого платежа (инв. 2
+    #: спецификации Payments); у заявленного чека суммы ещё нет. Пусто у
+    #: платежей, подтверждённых до шага E1, — их суммы никто не называл, и
+    #: выдумать их нельзя; сверка этапа E3 попросит владельца их указать.
+    amount = models.DecimalField("Сумма", max_digits=12, decimal_places=2,
+                                 null=True, blank=True)
     source = models.CharField("Источник", max_length=10, choices=SOURCE_CHOICES)
     status = models.CharField("Статус", max_length=10, choices=STATUS_CHOICES, default=PENDING)
     note = models.CharField("Примечание", max_length=300, blank=True)

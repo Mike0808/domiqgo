@@ -1,4 +1,6 @@
 from datetime import date
+from decimal import Decimal
+
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 import pytest
@@ -48,14 +50,42 @@ def test_attach_raises_when_nothing_unpaid(media_isolation):
     with pytest.raises(NoUnpaidStatementError):
         attach_receipt(tenant, _receipt(), source=Payment.TELEGRAM)
 
-def test_confirm_sets_paid(media_isolation):
+def test_confirm_sets_paid_and_records_the_amount(media_isolation):
     tenant, a = _tenant()
     MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1), status="unpaid")
     payment = attach_receipt(tenant, _receipt(), source=Payment.TELEGRAM)
-    confirm_payment(payment)
+    confirm_payment(payment, Decimal("21500"))
     payment.refresh_from_db(); payment.statement.refresh_from_db()
     assert payment.status == Payment.CONFIRMED
+    assert payment.amount == Decimal("21500")        # сумма есть только теперь
     assert payment.statement.status == MonthlyStatement.PAID
+
+
+def test_confirming_without_a_positive_amount_is_refused(media_isolation):
+    from billing.services.intake import PositiveAmountRequired
+    tenant, a = _tenant()
+    MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1), status="unpaid")
+    payment = attach_receipt(tenant, _receipt(), source=Payment.TELEGRAM)
+    for bad in (None, Decimal("0"), Decimal("-1")):
+        with pytest.raises(PositiveAmountRequired):
+            confirm_payment(payment, bad)
+    payment.refresh_from_db()
+    assert payment.status == Payment.PENDING
+
+
+def test_record_payment_marks_paid_without_a_receipt(media_isolation):
+    """Шаг E1: владелец, получивший наличные, не просит чек ради
+    формальности."""
+    from billing.services.intake import record_payment
+    tenant, a = _tenant()
+    stmt = MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1),
+                                           status="unpaid")
+    payment = record_payment(stmt, Decimal("21500"), note="наличными")
+    stmt.refresh_from_db()
+    assert payment.status == Payment.CONFIRMED and not payment.file
+    assert payment.source == Payment.MANUAL
+    assert payment.amount == Decimal("21500")
+    assert stmt.status == MonthlyStatement.PAID
 
 def test_reject_reverts_to_unpaid_when_no_other_pending(media_isolation):
     tenant, a = _tenant()

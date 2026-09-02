@@ -18,7 +18,10 @@ from .models import (
     Apartment, Tenant, MonthlyStatement, Document, Payment,
 )
 from .services.statements import generate_statement, missing_meters
-from .services.intake import confirm_payment, reject_payment, _revert_if_no_pending
+from .services.intake import (
+    PositiveAmountRequired, confirm_payment, record_payment, reject_payment,
+    _revert_if_no_pending,
+)
 
 @admin.register(Apartment)
 class ApartmentAdmin(admin.ModelAdmin):
@@ -308,11 +311,22 @@ def regenerate_statements(modeladmin, request, queryset):
     if ok:
         modeladmin.message_user(request, f"Пересчитано начислений: {ok}.")
 
-@admin.action(description="Подтвердить оплату")
+@admin.action(description="Подтвердить оплату суммой счёта")
 def confirm_payments(modeladmin, request, queryset):
+    """Обычный случай — «пришло ровно столько, сколько выставлено»: сумма
+    преднастроена итогом счёта, один клик. Другую сумму владелец указывает
+    в форме платежа перед подтверждением."""
     n = 0
     for p in queryset.filter(status=Payment.PENDING):
-        confirm_payment(p); n += 1
+        try:
+            confirm_payment(p, p.amount if p.amount else p.statement.total)
+            n += 1
+        except PositiveAmountRequired:
+            modeladmin.message_user(
+                request,
+                f"Платёж по счёту «{p.statement}» не подтверждён: укажите "
+                "сумму в форме платежа — итог счёта нулевой.",
+                level=messages.ERROR)
     modeladmin.message_user(request, f"Подтверждено платежей: {n}.")
 
 @admin.action(description="Отклонить платёж")
@@ -324,11 +338,30 @@ def reject_payments(modeladmin, request, queryset):
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ("statement", "source", "status", "submitted_at", "preview")
+    list_display = ("statement", "source", "status", "amount", "submitted_at",
+                    "preview")
     list_filter = ("status", "source")
     date_hierarchy = "submitted_at"
     readonly_fields = ("preview", "submitted_at")
     actions = [confirm_payments, reject_payments]
+
+    def get_fields(self, request, obj=None):
+        if obj is None:
+            # Ручная отметка (шаг E1): счёт, сумма, примечание. Чека нет —
+            # владелец, получивший наличные, не просит фотографию.
+            return ("statement", "amount", "note")
+        return ("statement", "source", "status", "amount", "note", "file",
+                "preview", "submitted_at")
+
+    def save_model(self, request, obj, form, change):
+        """Добавление платежа владельцем — команда RecordPayment, а не
+        правка таблицы: платёж рождается подтверждённым, счёт — оплаченным."""
+        if change:
+            super().save_model(request, obj, form, change)
+            return
+        recorded = record_payment(obj.statement, obj.amount, note=obj.note)
+        obj.pk = recorded.pk
+        obj.refresh_from_db()
 
     @admin.display(description="Чек")
     def preview(self, obj):
@@ -356,7 +389,7 @@ class PaymentAdmin(admin.ModelAdmin):
 class PaymentInline(admin.TabularInline):
     model = Payment
     extra = 0
-    readonly_fields = ("source", "status", "submitted_at")
+    readonly_fields = ("source", "status", "amount", "submitted_at")
 
 @admin.register(MonthlyStatement)
 class MonthlyStatementAdmin(admin.ModelAdmin):

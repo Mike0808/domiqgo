@@ -4,6 +4,16 @@ from ..models import MonthlyStatement, Payment
 class NoUnpaidStatementError(Exception):
     """No statement with status 'unpaid' to attach a receipt to."""
 
+class PositiveAmountRequired(Exception):
+    """Подтверждение требует суммы, и она строго положительна (инв. 2
+    спецификации Payments)."""
+
+def _checked(amount):
+    if amount is None or amount <= 0:
+        raise PositiveAmountRequired(
+            f"Сумма платежа обязана быть больше нуля, получено: {amount}.")
+    return amount
+
 def earliest_unpaid_statement(apartment):
     return (MonthlyStatement.objects
             .filter(apartment=apartment, status=MonthlyStatement.UNPAID)
@@ -22,12 +32,35 @@ def attach_receipt(tenant, file, source, filename=None):
     return payment
 
 @transaction.atomic
-def confirm_payment(payment):
+def confirm_payment(payment, amount):
+    """Признать заявленный платёж и указать сумму (шаг E1).
+
+    Сумма появляется у платежа только здесь: заявленный чек — ещё не деньги.
+    Статус счёта пока проставляется по-старому — его судьба решается на E3.
+    """
+    payment.amount = _checked(amount)
     payment.status = Payment.CONFIRMED
-    payment.save(update_fields=["status"])
+    payment.save(update_fields=["status", "amount"])
     stmt = payment.statement
     stmt.status = MonthlyStatement.PAID
     stmt.save(update_fields=["status"])
+
+
+@transaction.atomic
+def record_payment(statement, amount, note=""):
+    """Отметить полученный платёж вручную, без чека (шаг E1).
+
+    Роадмап относит ручную отметку к P1, но команды до сих пор не было:
+    владелец, получивший наличные, был вынужден просить чек ради
+    формальности. Платёж рождается сразу подтверждённым — владелец
+    и есть подтверждающий.
+    """
+    payment = Payment.objects.create(
+        statement=statement, source=Payment.MANUAL, status=Payment.CONFIRMED,
+        amount=_checked(amount), note=note)
+    statement.status = MonthlyStatement.PAID
+    statement.save(update_fields=["status"])
+    return payment
 
 def _revert_if_no_pending(stmt):
     """Drop a statement back to UNPAID once no PENDING payment remains,

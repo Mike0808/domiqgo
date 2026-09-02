@@ -60,7 +60,7 @@ def test_every_payment_step_writes_the_invoice_status(media_isolation):
     invoice.refresh_from_db()
     assert invoice.status == MonthlyStatement.PENDING   # чек приложен
 
-    confirm_payment(payment)
+    confirm_payment(payment, invoice.total or Decimal("100"))
     invoice.refresh_from_db()
     assert invoice.status == MonthlyStatement.PAID      # оплата подтверждена
 
