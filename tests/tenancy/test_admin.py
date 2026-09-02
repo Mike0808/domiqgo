@@ -146,3 +146,59 @@ def test_correcting_the_rent_of_a_running_contract(admin_client, flat):
 
     assert resp.status_code == 302
     assert api.get_tenancy(contract.tenancy_id).terms.rent == Decimal("35000")
+
+
+# ------------------------------------------- сторона договора одна (D3)
+
+def _user(username):
+    from django.contrib.auth.models import User
+
+    return User.objects.create_user(username, password="x").pk
+
+
+def test_choosing_the_party_confirms_one_and_suspends_the_other(admin_client, flat):
+    from modules.identity import api as identity
+
+    ivanov, ivanova = _user("ivanov"), _user("ivanova")
+    chosen = _draft(flat, ivanov)
+    other = _draft(flat, ivanova)
+
+    resp = admin_client.post("/admin/tenancy/tenancy/", {
+        "action": "choose_the_party", "_selected_action": [str(chosen)],
+    }, follow=True)
+
+    assert resp.status_code == 200
+    assert api.get_tenancy(chosen).start_confirmed
+    assert identity.get_account(ivanova).suspended is True
+    assert identity.get_account(ivanov).suspended is False
+    assert api.get_tenancy(other) is not None        # ничего не удалено
+
+
+def test_an_account_with_a_confirmed_tenancy_elsewhere_is_not_suspended(admin_client, flat):
+    from modules.identity import api as identity
+
+    ivanova = _user("ivanova")
+    other_flat = properties.register_property("кв2", has_hot_water=False)
+    api.start_tenancy(other_flat, ivanova, "Иванова", date(2026, 1, 1),
+                      api.Terms(rent=Decimal("10000")))
+    chosen = _draft(flat, _user("ivanov"))
+    _draft(flat, ivanova)
+
+    resp = admin_client.post("/admin/tenancy/tenancy/", {
+        "action": "choose_the_party", "_selected_action": [str(chosen)],
+    }, follow=True)
+
+    assert identity.get_account(ivanova).suspended is False
+    assert "подтверждённый" in resp.content.decode()
+
+
+def test_choosing_needs_exactly_one_selected(admin_client, flat):
+    first, second = _draft(flat, _user("a")), _draft(flat, _user("b"))
+
+    admin_client.post("/admin/tenancy/tenancy/", {
+        "action": "choose_the_party",
+        "_selected_action": [str(first), str(second)],
+    }, follow=True)
+
+    assert not api.get_tenancy(first).start_confirmed
+    assert not api.get_tenancy(second).start_confirmed

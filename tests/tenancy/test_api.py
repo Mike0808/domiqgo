@@ -202,3 +202,20 @@ def test_renewal_of_an_ended_contract_is_refused(flat):
 
     with pytest.raises(api.AlreadyEnded):
         api.renew_tenancy(old, date(2026, 7, 1), TERMS)
+
+
+# --------------------------------------------- сторона договора одна (D3)
+
+def test_the_confirmed_tenancy_wins_over_the_remaining_draft(flat):
+    """После выбора стороны счёт и кабинет смотрят на подтверждённый договор,
+    а оставшийся черновик — просто нерешённое предложение."""
+    from billing.tests.tenancies import draft as make_draft
+
+    class _Flat:
+        pk = flat
+    make_draft(_Flat, 11, started_on=date(2026, 1, 1))            # ранний черновик
+    chosen = make_draft(_Flat, 12, started_on=date(2026, 2, 1))
+    api.correct_tenancy(chosen, started_on=date(2026, 2, 1))
+
+    assert api.tenancy_for(flat, date(2026, 5, 1)).tenancy_id == chosen
+    assert api.active_tenancy_for_account(11, date(2026, 5, 1)) is not None  # черновик жив

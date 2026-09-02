@@ -274,3 +274,18 @@ def test_a_profile_without_a_contract_does_not_open_the_cabinet(db):
     page = _login(u).get("/")
 
     assert "Нет действующего договора" in page.content.decode()
+
+
+def test_a_suspended_account_with_a_live_session_is_locked_out(tenant_setup):
+    """Приостановка гасит и живую сессию: Django не отдаёт неактивного
+    пользователя из сессии, запрос уходит на страницу входа (шаг D3)."""
+    from modules.identity import api as identity
+
+    a, u = tenant_setup
+    c = _login(u)                       # сессия открыта до приостановки
+    identity.suspend_account(u.pk, timezone.now())
+
+    page = c.get("/history/")
+
+    assert page.status_code == 302
+    assert "/login" in page.headers["Location"]

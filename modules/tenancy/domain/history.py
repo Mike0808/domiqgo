@@ -28,11 +28,10 @@ class PropertyOutOfService(ValueError):
 class PropertyHistory:
     """Все договоры одного объекта.
 
-    Загруженная история может содержать пересечения — их оставила миграция из
-    записей жильцов, где к квартире было привязано несколько человек (шаг D3
-    разводит их с владельцем). Инвариант держится на **новых** договорах:
-    существующее пересечение не мешает читать историю, но мешает добавить в
-    неё ещё одно.
+    Инвариант непересечения (1) действует между **подтверждёнными**
+    договорами: подтверждённый занимает период по-настоящему. Черновики
+    миграции — предложения, а не факты (шаг D3): они не мешают ни новым
+    договорам, ни друг другу, и при чтении проигрывают подтверждённому.
     """
 
     def __init__(self, property_id: int, tenancies=(), out_of_service: bool = False):
@@ -46,11 +45,12 @@ class PropertyHistory:
         return list(self._tenancies)
 
     def start(self, tenancy: Tenancy) -> Tenancy:
-        """Заселить. Отказывает, если объект выведен или период занят."""
+        """Заселить. Отказывает, если объект выведен или период занят
+        подтверждённым договором; черновик миграции заселению не мешает."""
         if self.out_of_service:
             raise PropertyOutOfService(
                 f"объект #{self.property_id} выведен из эксплуатации")
-        self._ensure_free_for(tenancy, confirmed_only=False)
+        self._ensure_free_for(tenancy)
         self._tenancies.append(tenancy)
         self._tenancies.sort(key=lambda t: (t.started_on, t.tenancy_id or 0))
         return tenancy
@@ -65,17 +65,16 @@ class PropertyHistory:
         занимает период по-настоящему: вторую дату той же квартиры на те же
         дни подтвердить уже нельзя — это и есть вопрос шага D3.
         """
-        self._ensure_free_for(corrected, confirmed_only=True)
+        self._ensure_free_for(corrected)
         self._tenancies = [corrected if t.tenancy_id == corrected.tenancy_id else t
                            for t in self._tenancies]
         self._tenancies.sort(key=lambda t: (t.started_on, t.tenancy_id or 0))
         return corrected
 
-    def _ensure_free_for(self, tenancy: Tenancy, confirmed_only: bool) -> None:
+    def _ensure_free_for(self, tenancy: Tenancy) -> None:
         others = (t for t in self._tenancies
-                  if t.tenancy_id is None or t.tenancy_id != tenancy.tenancy_id)
-        if confirmed_only:
-            others = (t for t in others if t.start_confirmed)
+                  if (t.tenancy_id is None or t.tenancy_id != tenancy.tenancy_id)
+                  and t.start_confirmed)
         clash = next((t for t in others if t.overlaps(tenancy)), None)
         if clash is not None:
             raise PeriodOverlap(
@@ -83,9 +82,16 @@ class PropertyHistory:
                 f"с {clash.started_on:%d.%m.%Y}")
 
     def active_on(self, day: date) -> Tenancy | None:
-        """Договор, чей период включает день. При пересечении (наследие
-        миграции) — самый ранний по дате заселения, затем по номеру."""
-        return next((t for t in self._tenancies if t.covers(day)), None)
+        """Договор, чей период включает день.
+
+        Подтверждённый побеждает черновик: после выбора стороны договора
+        (шаг D3) счёт и кабинет смотрят на него, а не на оставшееся
+        предложение миграции. Среди одних черновиков — самый ранний по дате
+        заселения, затем по номеру.
+        """
+        covering = [t for t in self._tenancies if t.covers(day)]
+        confirmed = next((t for t in covering if t.start_confirmed), None)
+        return confirmed if confirmed is not None else next(iter(covering), None)
 
     def of_record_for(self, period_start: date) -> Tenancy | None:
         """Договор периода — тот, что действовал на дату начала расчётного

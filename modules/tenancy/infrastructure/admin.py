@@ -14,6 +14,9 @@
 """
 
 from django.contrib import admin
+from django.utils import timezone
+
+from modules.identity import api as identity
 from django.core.exceptions import ValidationError
 from django.forms import ModelForm
 
@@ -86,7 +89,7 @@ class TenancyAdmin(admin.ModelAdmin):
     list_filter = ("start_confirmed",)
     search_fields = ("full_name",)
     ordering = ("property_id", "started_on")
-    actions = ["confirm_proposed_dates"]
+    actions = ["confirm_proposed_dates", "choose_the_party"]
 
     def get_fieldsets(self, request, obj=None):
         return ((None, {"description": ADD_HINT, "fields": self.get_fields(request, obj)}),)
@@ -140,3 +143,45 @@ class TenancyAdmin(admin.ModelAdmin):
                     level="WARNING")
         if confirmed:
             self.message_user(request, f"Дат подтверждено: {confirmed}.")
+
+    @admin.action(description="Сделать стороной договора; других жильцов приостановить")
+    def choose_the_party(self, request, queryset):
+        """Шаг D3, ADR-0011: у договора одна учётная запись.
+
+        Выбранный черновик подтверждается; учётные записи остальных
+        черновиков той же квартиры приостанавливаются — не удаляются, чтобы
+        решение осталось обратимым. Запись с подтверждённым договором в
+        другом месте не трогается: приостановка закрыла бы ей и тот кабинет.
+        """
+        if queryset.count() != 1:
+            self.message_user(
+                request, "Выберите один договор — того, кто остаётся стороной.",
+                level="ERROR")
+            return
+        chosen = queryset.first()
+        try:
+            api.correct_tenancy(chosen.pk, started_on=chosen.started_on)
+        except api.PeriodOverlap as exc:
+            self.message_user(request, str(exc), level="ERROR")
+            return
+        others = (Tenancy.objects.filter(property_id=chosen.property_id,
+                                         start_confirmed=False)
+                  .exclude(account_id=chosen.account_id))
+        suspended, kept = 0, []
+        for row in others:
+            if Tenancy.objects.filter(account_id=row.account_id,
+                                      start_confirmed=True).exists():
+                kept.append(row.full_name or f"#{row.account_id}")
+                continue
+            identity.suspend_account(row.account_id, timezone.now())
+            suspended += 1
+        self.message_user(
+            request,
+            f"Сторона договора — {chosen.full_name or chosen.account_id}. "
+            f"Приостановлено учётных записей: {suspended}. Вернуть доступ "
+            "можно без потери данных — обратной командой.")
+        for name in kept:
+            self.message_user(
+                request,
+                f"{name}: не приостановлен — у записи есть подтверждённый "
+                "договор в другом месте.", level="WARNING")

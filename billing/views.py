@@ -34,16 +34,24 @@ def _apartment_of(contract):
 def _no_contract_response(request):
     # Куда вести человека без действующего договора, решает тип учётной
     # записи из Identity, а не флаг «персонал» Django (шаг C4e).
+    # Приостановленный (шаг D3) сюда не доходит: Django не отдаёт
+    # неактивного пользователя даже из живой сессии.
     if identity.get_account(request.user.pk).is_owner:
         return redirect("/admin/")
     return render(request, "billing/no_tenant.html")
 
+def _cabinet_gate(request):
+    """Ответ, закрывающий кабинет, или `None`, если вход разрешён."""
+    if _contract_for(request) is None:
+        return _no_contract_response(request)
+    return None
+
 @login_required
 def current_month(request):
-    contract = _contract_for(request)
-    if contract is None:
-        return _no_contract_response(request)
-    apartment = _apartment_of(contract)
+    closed = _cabinet_gate(request)
+    if closed is not None:
+        return closed
+    apartment = _apartment_of(_contract_for(request))
     # Форма ввода строится по заведённым приборам: спрашивать у жильца
     # показание прибора, которого нет, бессмысленно (шаг C2e).
     meters = metered_resources(apartment)
@@ -103,17 +111,19 @@ def current_month(request):
 
 @login_required
 def history(request):
-    contract = _contract_for(request)
-    if contract is None:
-        return _no_contract_response(request)
+    closed = _cabinet_gate(request)
+    if closed is not None:
+        return closed
     statements = (MonthlyStatement.objects
-                  .filter(apartment_id=contract.property_id).order_by("-period"))
+                  .filter(apartment_id=_contract_for(request).property_id)
+                  .order_by("-period"))
     return render(request, "billing/history.html", {"statements": statements})
 
 @login_required
 def documents(request):
-    if _contract_for(request) is None:
-        return _no_contract_response(request)
+    closed = _cabinet_gate(request)
+    if closed is not None:
+        return closed
     # Файлы пока привязаны к профилю жильца — они ждут модуля Documents.
     tenant = Tenant.objects.filter(user=request.user).first()
     docs = tenant.documents.all() if tenant is not None else Document.objects.none()

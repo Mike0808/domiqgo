@@ -10,7 +10,7 @@ from bus import publish
 
 from ..domain.account import AccountType
 from ..domain.link_code import InvalidLinkCode, LinkCode, presented
-from ..events import PrivacyConsentGranted
+from ..events import AccountSuspended, PrivacyConsentGranted
 from .ports import AccountRegistry, ConsentRepository, LinkCodeRepository
 
 
@@ -24,6 +24,22 @@ def register_account(registry: AccountRegistry, account_id: int,
     созданной значило бы лгать журналу шины.
     """
     registry.register(account_id, type)
+
+
+def suspend_account(registry: AccountRegistry, account_id: int,
+                    at: datetime) -> None:
+    """Закрыть доступ: жилец съехал. Решение владельца, а не следствие даты
+    (спецификация: Identity не подписан на окончание договора).
+
+    Ничего не удаляется — приостановка обратима командой `restore_account`.
+    """
+    registry.set_suspended(account_id, True)
+    publish(AccountSuspended(account_id=account_id, at=at))
+
+
+def restore_account(registry: AccountRegistry, account_id: int) -> None:
+    """Вернуть доступ."""
+    registry.set_suspended(account_id, False)
 
 
 def grant_privacy_consent(repository: ConsentRepository, account_id: int,

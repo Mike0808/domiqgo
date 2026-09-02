@@ -2,7 +2,7 @@
 
 | Пункт | Что зафиксировано                                     | Кто перепишет |
 |-------|-------------------------------------------------------|---------------|
-| №31   | на одну квартиру можно завести нескольких жильцов      | D3            |
+| №31   | ~~на одну квартиру можно завести нескольких жильцов~~ → сторона договора одна, остальные приостановлены | **исправлен D3** |
 | №33   | ~~владелец не может подключить себе OAuth~~ → согласие принадлежит учётной записи, владелец подключает провайдера сам | **исправлен C4b** |
 
 №33 был тестом на дефект: он закреплял поломку, а не правило. C4a перенёс
@@ -18,6 +18,7 @@ import pytest
 from allauth.core.exceptions import ImmediateHttpResponse
 from django.contrib.auth.models import User
 from django.test import Client, RequestFactory
+from django.utils import timezone
 
 from billing.adapters import NoSignupSocialAccountAdapter
 from billing.consent import PRIVACY_POLICY_VERSION
@@ -48,31 +49,38 @@ def _login(username):
 
 
 # --------------------------------------------------------------------------
-# №31 — несколько жильцов на квартиру. Переписывает шаг D3.
+# №31 — сторона договора одна. Исправлен шагом D3 (ADR-0011).
 # --------------------------------------------------------------------------
 
-def test_two_tenants_of_one_apartment_each_have_their_own_access():
-    """`related_name="tenants"` допускает двоих, и оба видят один и тот же счёт.
+def test_after_the_choice_only_the_party_keeps_the_cabinet():
+    """До D3 оба супруга видели один счёт; после выбора стороны кабинет
+    остаётся у стороны договора, вторая запись приостановлена — обратимо,
+    без удаления данных."""
+    from modules.identity import api as identity
+    from modules.tenancy import api as tenancy_api
 
-    После D3 (ADR-0011) стороной договора становится одна учётная запись;
-    вторая приостанавливается, **и в установке, где супруги входят по
-    отдельности, второй потеряет доступ к кабинету**.
-    """
     apartment = Apartment.objects.create(label="кв")
+    users = {}
     for username in ("ivanov", "ivanova"):
         user = User.objects.create_user(username, password="pass12345")
         Tenant.objects.create(user=user, apartment=apartment)
-        # С D1d кабинет открывается по договору. Миграция D1a завела черновик
-        # каждому жильцу квартиры, поэтому доступ у обоих сохраняется — и
-        # дефект №31 жив ровно до D3.
+        users[username] = user
         draft(apartment, user.pk)
     invoice = MonthlyStatement.objects.create(
         apartment=apartment, period=date(2026, 5, 1), total=Decimal("1000.00"))
 
-    assert apartment.tenants.count() == 2
-    for username in ("ivanov", "ivanova"):
-        response = _login(username).get("/history/")
-        assert list(response.context["statements"]) == [invoice]
+    chosen = tenancy_api.active_tenancy_for_account(users["ivanov"].pk, date(2026, 5, 1))
+    tenancy_api.correct_tenancy(chosen.tenancy_id, started_on=chosen.started_on)
+    identity.suspend_account(users["ivanova"].pk, timezone.now())
+
+    response = _login("ivanov").get("/history/")
+    assert list(response.context["statements"]) == [invoice]
+
+    blocked = Client()
+    assert not blocked.login(username="ivanova", password="pass12345")
+
+    identity.restore_account(users["ivanova"].pk)   # решение обратимо
+    assert Client().login(username="ivanova", password="pass12345")
 
 
 # --------------------------------------------------------------------------

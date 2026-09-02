@@ -68,14 +68,33 @@ def load_account(account_id: int) -> Account:
     """
     row = models.Account.objects.filter(account_id=account_id).first()
     if row is not None:
-        return Account(account_id=account_id, type=AccountType(row.type))
+        return Account(account_id=account_id, type=AccountType(row.type),
+                       suspended=_is_suspended(account_id))
     from django.contrib.auth import get_user_model
 
     is_staff = (get_user_model().objects.filter(pk=account_id)
                 .values_list("is_staff", flat=True).first())
-    return Account(account_id=account_id, type=type_from_staff_flag(bool(is_staff)))
+    return Account(account_id=account_id, type=type_from_staff_flag(bool(is_staff)),
+                   suspended=_is_suspended(account_id))
+
+
+def _is_suspended(account_id: int) -> bool:
+    from django.contrib.auth import get_user_model
+
+    is_active = (get_user_model().objects.filter(pk=account_id)
+                 .values_list("is_active", flat=True).first())
+    return is_active is False   # незнакомая запись не считается приостановленной
 
 
 def register(account_id: int, type: AccountType) -> None:
     models.Account.objects.update_or_create(
         account_id=account_id, defaults={"type": type.value})
+
+
+def set_suspended(account_id: int, suspended: bool) -> None:
+    """Статус — `auth.User.is_active`: вход перестаёт работать средствами
+    самого Django, без второго флага с тем же смыслом. `auth.User` — таблица
+    учётных записей самого Identity (модуль своей не заводит)."""
+    from django.contrib.auth import get_user_model
+
+    get_user_model().objects.filter(pk=account_id).update(is_active=not suspended)

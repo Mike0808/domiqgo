@@ -21,6 +21,9 @@ class AccountType(Enum):
 class Account:
     account_id: int
     type: AccountType
+    #: Приостановлена — жилец съехал, доступ закрыт решением владельца.
+    #: Обратимо: `RestoreAccount` возвращает доступ, ничего не удаляя.
+    suspended: bool = False
 
     @property
     def is_owner(self) -> bool:

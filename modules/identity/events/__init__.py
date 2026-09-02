@@ -21,3 +21,16 @@ class PrivacyConsentGranted:
     account_id: int
     policy_version: str
     given_at: datetime
+
+
+@dataclass(frozen=True)
+class AccountSuspended:
+    """Доступ закрыт решением владельца: жилец съехал.
+
+    P1: никто. Возврат доступа (`RestoreAccount`) события не публикует —
+    спецификация называет только приостановку; след возврата остаётся в
+    таблице.
+    """
+
+    account_id: int
+    at: datetime

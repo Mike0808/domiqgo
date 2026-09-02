@@ -10,9 +10,11 @@
 | `ListLinkedProviders(account_id)` | `list_linked_providers` |
 | `GetAccount(account_id)` | `get_account` |
 | `CreateAccount` (тип) | `register_account` |
+| `SuspendAccount` | `suspend_account` |
+| `RestoreAccount` | `restore_account` |
 
-**Чего здесь пока нет.** `UnlinkExternalIdentity`, `ChangePassword`,
-`SuspendAccount` и статус учётной записи — за пределами этапа C.
+**Чего здесь пока нет.** `UnlinkExternalIdentity` и `ChangePassword` — за
+пределами этапов C и D.
 `CreateAccount` представлен половиной: имя входа и пароль заводит
 стандартная админка Django, `register_account` записывает тип.
 
@@ -98,6 +100,20 @@ def register_account(account_id: int, type: AccountType) -> None:
     commands.register_account(_repository(), account_id, type)
 
 
+def suspend_account(account_id: int, at: datetime) -> None:
+    """Закрыть доступ: жилец съехал. Обратимо; ничего не удаляется.
+
+    Вход перестаёт работать средствами Django (`is_active`) — в том числе
+    живая сессия: бэкенд не отдаёт неактивного пользователя из неё.
+    """
+    commands.suspend_account(_repository(), account_id, at)
+
+
+def restore_account(account_id: int) -> None:
+    """Вернуть доступ приостановленной записи."""
+    commands.restore_account(_repository(), account_id)
+
+
 def grant_privacy_consent(account_id: int, policy_version: str,
                           at: datetime) -> None:
     """Зафиксировать согласие на обработку персональных данных.
@@ -128,6 +144,6 @@ __all__ = [
     "InvalidLinkCodeError",
     "get_account", "has_current_consent", "consent_history",
     "admit_external_login", "list_linked_providers",
-    "register_account", "grant_privacy_consent", "issue_link_code",
-    "redeem_link_code",
+    "register_account", "suspend_account", "restore_account",
+    "grant_privacy_consent", "issue_link_code", "redeem_link_code",
 ]

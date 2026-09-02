@@ -64,14 +64,21 @@ def test_an_open_tenancy_blocks_every_later_start():
         history.start(_tenancy(date(2030, 1, 1), account_id=2))
 
 
-def test_overlaps_left_by_the_migration_do_not_break_reading_the_history():
-    """До D3 у квартиры может быть несколько черновиков на одни даты. Читать
-    историю можно; добавить ещё один договор — нельзя."""
-    history = PropertyHistory(7, [_tenancy(date(2026, 1, 1), tenancy_id=1),
-                                  _tenancy(date(2026, 1, 1), tenancy_id=2, account_id=2)])
-    assert history.active_on(date(2026, 5, 1)).tenancy_id == 1
-    with pytest.raises(PeriodOverlap):
-        history.start(_tenancy(date(2027, 1, 1), account_id=3))
+def test_drafts_do_not_block_and_do_not_beat_a_confirmed_tenancy():
+    """Черновики миграции — предложения, а не факты (D3): пересекаются между
+    собой, не мешают заселению и проигрывают подтверждённому договору."""
+    drafts = [Tenancy(tenancy_id=1, property_id=7, account_id=1, full_name="И",
+                      started_on=date(2026, 1, 1), terms=TERMS, start_confirmed=False),
+              Tenancy(tenancy_id=2, property_id=7, account_id=2, full_name="А",
+                      started_on=date(2026, 1, 1), terms=TERMS, start_confirmed=False)]
+    history = PropertyHistory(7, drafts)
+    assert history.active_on(date(2026, 5, 1)).tenancy_id == 1   # ранний из черновиков
+
+    confirmed = history.start(_tenancy(date(2026, 3, 1), account_id=3, tenancy_id=3))
+
+    assert history.active_on(date(2026, 5, 1)) is confirmed      # подтверждённый побеждает
+    with pytest.raises(PeriodOverlap):                           # а сам занимает период
+        history.start(_tenancy(date(2027, 1, 1), account_id=4))
 
 
 # ------------------------------------------------------------- инвариант 5

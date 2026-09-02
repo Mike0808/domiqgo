@@ -235,3 +235,38 @@ def test_registering_again_replaces_the_type():
     api.register_account(ACCOUNT, api.AccountType.OWNER)
 
     assert api.get_account(ACCOUNT).is_owner is True
+
+
+# ------------------------------------------------------- приостановка (D3)
+
+def test_suspending_an_account_blocks_the_login_and_tells_the_journal():
+    from django.contrib.auth.models import User
+    from modules.identity.events import AccountSuspended
+
+    events = []
+    subscribe(AccountSuspended, events.append)
+    tenant = User.objects.create_user("ivanova", password="x")
+
+    api.suspend_account(tenant.pk, JULY)
+
+    tenant.refresh_from_db()
+    assert tenant.is_active is False                 # вход закрыт средствами Django
+    assert api.get_account(tenant.pk).suspended is True
+    assert events == [AccountSuspended(account_id=tenant.pk, at=JULY)]
+
+
+def test_restoring_gives_the_access_back_without_losing_anything():
+    from django.contrib.auth.models import User
+
+    tenant = User.objects.create_user("ivanova", password="x")
+    api.suspend_account(tenant.pk, JULY)
+
+    api.restore_account(tenant.pk)
+
+    tenant.refresh_from_db()
+    assert tenant.is_active is True
+    assert api.get_account(tenant.pk).suspended is False
+
+
+def test_an_unknown_account_is_not_suspended():
+    assert api.get_account(10**6).suspended is False

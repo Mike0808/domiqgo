@@ -16,6 +16,9 @@ class AccountRegistry(Protocol):
     def register(self, account_id: int, type: AccountType) -> None:
         """Записать тип в реестр; прежняя запись, если была, замещается."""
 
+    def set_suspended(self, account_id: int, suspended: bool) -> None:
+        """Закрыть или вернуть доступ. Ничего не удаляет."""
+
 
 class ConsentRepository(Protocol):
     def load_journal(self, account_id: int): ...
