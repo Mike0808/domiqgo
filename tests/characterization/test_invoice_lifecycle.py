@@ -19,7 +19,7 @@ from django.test import Client
 from django.utils import timezone
 
 from modules.metering.infrastructure.models import Meter, MeterReading
-from billing.tests.tenancies import let_in
+from billing.tests.tenancies import draft, let_in
 from billing.models import Apartment, MonthlyStatement, Tenant
 from billing.services.statements import generate_statement
 from modules.tariffs.api import publish_tariff_version
@@ -46,6 +46,7 @@ def _apartment(label="кв"):
 
 def _tenant(apartment, username):
     user = User.objects.create_user(username, password="pass12345")
+    draft(apartment, user.pk)   # кабинет открывается по договору (D1d)
     return Tenant.objects.create(user=user, apartment=apartment), user
 
 

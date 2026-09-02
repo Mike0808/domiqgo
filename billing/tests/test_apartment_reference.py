@@ -25,6 +25,7 @@ from modules.metering.infrastructure.models import Meter, MeterReading
 from modules.properties import api as properties
 from billing.consent import PRIVACY_POLICY_VERSION
 from billing.models import Apartment, Tenant
+from billing.tests.tenancies import let_in
 
 
 pytestmark = pytest.mark.django_db
@@ -54,6 +55,7 @@ def tenant_client(apartment):
     """Жилец, открывающий форму ввода показаний."""
     user = User.objects.create_user("zhilets", password="pass12345")
     Tenant.objects.create(user=user, apartment=apartment)
+    let_in(apartment, account_id=user.pk)   # кабинет — по договору (D1d)
     client = Client()
     client.login(username="zhilets", password="pass12345")
     return client

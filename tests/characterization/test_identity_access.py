@@ -22,6 +22,7 @@ from django.test import Client, RequestFactory
 from billing.adapters import NoSignupSocialAccountAdapter
 from billing.consent import PRIVACY_POLICY_VERSION
 from billing.models import Apartment, MonthlyStatement, Tenant
+from billing.tests.tenancies import draft
 from modules.identity import api as identity
 
 pytestmark = [pytest.mark.django_db, pytest.mark.characterization]
@@ -61,6 +62,10 @@ def test_two_tenants_of_one_apartment_each_have_their_own_access():
     for username in ("ivanov", "ivanova"):
         user = User.objects.create_user(username, password="pass12345")
         Tenant.objects.create(user=user, apartment=apartment)
+        # С D1d кабинет открывается по договору. Миграция D1a завела черновик
+        # каждому жильцу квартиры, поэтому доступ у обоих сохраняется — и
+        # дефект №31 жив ровно до D3.
+        draft(apartment, user.pk)
     invoice = MonthlyStatement.objects.create(
         apartment=apartment, period=date(2026, 5, 1), total=Decimal("1000.00"))
 

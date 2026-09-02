@@ -8,9 +8,10 @@ from django.utils import timezone
 from django.views.static import serve
 from modules.identity import api as identity
 from modules.metering import api as metering
+from modules.tenancy import api as tenancy
 from .consent import PRIVACY_POLICY_VERSION
 from .forms import MeterReadingForm, ConsentForm
-from .models import Document, MonthlyStatement, Tenant
+from .models import Apartment, Document, MonthlyStatement, Tenant
 from .services.calculation import MissingHeatNormError, MissingTariffError
 from .services.statements import (
     MissingTenancyError, metered_resources, generate_statement,
@@ -19,25 +20,30 @@ from .services.statements import (
 def _current_period():
     return timezone.localdate().replace(day=1)
 
-def _tenant_for(request):
-    try:
-        return request.user.tenant
-    except Tenant.DoesNotExist:
-        return None
+def _contract_for(request):
+    """Кабинет жильца открывается по действующему договору (шаг D1d).
 
-def _no_tenant_response(request):
-    # Куда вести человека без профиля жильца, решает тип учётной записи из
-    # Identity, а не флаг «персонал» Django (шаг C4e).
+    Профиль жильца больше не пропуск: выехавший — с завершённым договором —
+    кабинета не имеет, даже если профиль ещё существует.
+    """
+    return tenancy.active_tenancy_for_account(request.user.pk, timezone.localdate())
+
+def _apartment_of(contract):
+    return Apartment.objects.get(pk=contract.property_id)
+
+def _no_contract_response(request):
+    # Куда вести человека без действующего договора, решает тип учётной
+    # записи из Identity, а не флаг «персонал» Django (шаг C4e).
     if identity.get_account(request.user.pk).is_owner:
         return redirect("/admin/")
     return render(request, "billing/no_tenant.html")
 
 @login_required
 def current_month(request):
-    tenant = _tenant_for(request)
-    if tenant is None:
-        return _no_tenant_response(request)
-    apartment = tenant.apartment
+    contract = _contract_for(request)
+    if contract is None:
+        return _no_contract_response(request)
+    apartment = _apartment_of(contract)
     # Форма ввода строится по заведённым приборам: спрашивать у жильца
     # показание прибора, которого нет, бессмысленно (шаг C2e).
     meters = metered_resources(apartment)
@@ -97,18 +103,20 @@ def current_month(request):
 
 @login_required
 def history(request):
-    tenant = _tenant_for(request)
-    if tenant is None:
-        return _no_tenant_response(request)
-    statements = MonthlyStatement.objects.filter(apartment=tenant.apartment).order_by("-period")
+    contract = _contract_for(request)
+    if contract is None:
+        return _no_contract_response(request)
+    statements = (MonthlyStatement.objects
+                  .filter(apartment_id=contract.property_id).order_by("-period"))
     return render(request, "billing/history.html", {"statements": statements})
 
 @login_required
 def documents(request):
-    tenant = _tenant_for(request)
-    if tenant is None:
-        return _no_tenant_response(request)
-    docs = tenant.documents.all()
+    if _contract_for(request) is None:
+        return _no_contract_response(request)
+    # Файлы пока привязаны к профилю жильца — они ждут модуля Documents.
+    tenant = Tenant.objects.filter(user=request.user).first()
+    docs = tenant.documents.all() if tenant is not None else Document.objects.none()
     return render(request, "billing/documents.html", {"documents": docs})
 
 @login_required

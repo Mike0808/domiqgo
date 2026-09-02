@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 import pytest
 from django.contrib.auth.models import User
@@ -140,13 +140,13 @@ def test_staff_without_tenant_profile_redirects_to_admin(db):
     assert resp.status_code == 302
     assert resp.headers["Location"].startswith("/admin/")
 
-def test_user_without_tenant_profile_gets_friendly_page(db):
+def test_user_without_a_contract_gets_friendly_page(db):
     User.objects.create_user("nobody", password="pass12345")
     c = Client()
     assert c.login(username="nobody", password="pass12345")
     resp = c.get("/")
     assert resp.status_code == 200               # not a 500
-    assert "не привязана" in resp.content.decode()
+    assert "Нет действующего договора" in resp.content.decode()
 
 def test_missing_sewage_tariff_shows_message_not_500(db):
     from django.contrib.auth.models import User
@@ -246,3 +246,31 @@ def test_a_tenant_without_registered_meters_has_nothing_to_submit(db):
     assert not MeterReading.objects.filter(apartment_id=a.pk).exists()
     stmt = MonthlyStatement.objects.get(apartment=a)
     assert [line["code"] for line in stmt.lines] == []
+
+
+# ------------------------------------------- кабинет — по договору (D1d)
+
+def test_a_moved_out_tenant_loses_the_cabinet(tenant_setup):
+    """Выехавший — с завершённым договором — кабинета не имеет, даже если
+    профиль жильца ещё существует."""
+    from modules.tenancy import api as tenancy
+
+    a, u = tenant_setup
+    contract = tenancy.active_tenancy_for_account(u.pk, timezone.localdate())
+    tenancy.end_tenancy(contract.tenancy_id, timezone.localdate() - timedelta(days=1))
+
+    c = _login(u)
+    for url in ("/", "/history/", "/documents/"):
+        page = c.get(url)
+        assert page.status_code == 200
+        assert "Нет действующего договора" in page.content.decode()
+
+
+def test_a_profile_without_a_contract_does_not_open_the_cabinet(db):
+    a = Apartment.objects.create(label="кв")
+    u = User.objects.create_user("nocontract", password="pass12345")
+    Tenant.objects.create(user=u, apartment=a)   # профиль есть, договора нет
+
+    page = _login(u).get("/")
+
+    assert "Нет действующего договора" in page.content.decode()
