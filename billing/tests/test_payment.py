@@ -21,4 +21,5 @@ def test_payment_defaults_to_pending(media_isolation):
 
 def test_payment_source_choices_cover_all_channels():
     codes = {c for c, _ in Payment.SOURCE_CHOICES}
-    assert codes == {Payment.TELEGRAM, Payment.MAX, Payment.WEB}
+    # MANUAL появился на E1: ручная отметка владельца, без чека.
+    assert codes == {Payment.TELEGRAM, Payment.MAX, Payment.WEB, Payment.MANUAL}

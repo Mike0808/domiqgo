@@ -21,8 +21,11 @@ def media_isolation(settings, tmp_path):
     settings.MEDIA_ROOT = tmp_path
 
 def _pending_payment():
+    from billing.tests.tenancies import let_in
+
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("t", password="x")
+    let_in(a, account_id=u.pk)   # платёж ищет счёт договора (шаг E2)
     t = Tenant.objects.create(user=u, apartment=a)
     MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1),
                                     status="unpaid", total=Decimal("21500"))

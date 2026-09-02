@@ -24,5 +24,10 @@ def active_tenancy_for_account(repository: TenancyRepository, account_id: int,
     return repository.active_for_account(account_id, today)
 
 
+def list_tenancies_for_account(repository: TenancyRepository,
+                               account_id: int) -> list[Tenancy]:
+    return repository.list_for_account(account_id)
+
+
 def list_tenancies_for(repository: TenancyRepository, property_id: int) -> list[Tenancy]:
     return repository.load_history(property_id).tenancies

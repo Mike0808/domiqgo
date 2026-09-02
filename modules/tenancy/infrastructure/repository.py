@@ -54,6 +54,12 @@ def active_for_account(account_id: int, day: date) -> Tenancy | None:
     return next((_to_domain(r) for r in rows if _to_domain(r).covers(day)), None)
 
 
+def list_for_account(account_id: int) -> list[Tenancy]:
+    rows = (models.Tenancy.objects.filter(account_id=account_id)
+            .order_by("started_on", "id"))
+    return [_to_domain(r) for r in rows]
+
+
 def mark_out_of_service(property_id: int, out: bool) -> None:
     if out:
         models.OutOfService.objects.get_or_create(property_id=property_id)

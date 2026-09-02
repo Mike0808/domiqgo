@@ -61,40 +61,44 @@ def _current_period():
 
 
 # --------------------------------------------------------------------------
-# №6 — счёт принадлежит квартире, а не договору. Переписывает шаг E2.
+# №6 — счёт принадлежит договору. Исправлен шагом E2 (ADR-0024).
 # --------------------------------------------------------------------------
 
-def test_new_tenant_sees_invoices_of_the_previous_one():
-    """Счёт привязан к квартире, поэтому переезжает вместе с ней.
+def test_a_new_tenant_does_not_see_invoices_of_the_previous_one():
+    """Счёт принадлежит договору: жилец видит только свой период
+    проживания, счета прежнего не переезжают вместе со стенами."""
+    from modules.tenancy import api as tenancy_api
 
-    После E2 счёт принадлежит договору, и жилец видит только свой период
-    проживания.
-    """
     apartment = _apartment()
-    previous, _ = _tenant(apartment, "old")
-    old_invoice = MonthlyStatement.objects.create(
-        apartment=apartment, period=date(2026, 5, 1), total=Decimal("1234.00"))
-    previous.delete()  # прежний жилец съехал
+    previous, prev_user = _tenant(apartment, "old")
+    prev_contract = tenancy_api.active_tenancy_for_account(
+        prev_user.pk, date(2026, 5, 1))
+    MonthlyStatement.objects.create(
+        apartment=apartment, period=date(2026, 5, 1), total=Decimal("1234.00"),
+        tenancy_id=prev_contract.tenancy_id)
+    previous.delete()  # прежний жилец съехал; его счета — история его договора
 
     _, user = _tenant(apartment, "new")
     response = _login(user).get("/history/")
 
-    assert list(response.context["statements"]) == [old_invoice]
+    assert list(response.context["statements"]) == []
 
 
-def test_two_tenancies_in_one_month_cannot_both_be_invoiced():
-    """Ключ `(квартира, период)` допускает ровно один счёт за месяц.
-
-    Смена жильца в середине месяца сегодня невыразима: второй счёт за тот же
-    период не создать. После E2 ключом становится договор, и оба счёта живут
-    рядом (ADR-0024).
-    """
+def test_two_tenancies_in_one_month_may_both_be_invoiced():
+    """Ключ счёта — (договор, период): смена жильца в середине месяца
+    выразима, оба счёта живут рядом (ADR-0024). За один договор и период
+    счёт по-прежнему один."""
     apartment = _apartment()
-    MonthlyStatement.objects.create(apartment=apartment, period=date(2026, 5, 1))
+    first = MonthlyStatement.objects.create(
+        apartment=apartment, period=date(2026, 5, 1), tenancy_id=101)
+    MonthlyStatement.objects.create(
+        apartment=apartment, period=date(2026, 5, 1), tenancy_id=102)
 
+    assert MonthlyStatement.objects.filter(period=date(2026, 5, 1)).count() == 2
     with pytest.raises(IntegrityError):
         with transaction.atomic():
-            MonthlyStatement.objects.create(apartment=apartment, period=date(2026, 5, 1))
+            MonthlyStatement.objects.create(
+                apartment=apartment, period=first.period, tenancy_id=101)
 
 
 # --------------------------------------------------------------------------
@@ -120,8 +124,11 @@ def test_reading_lock_follows_payment_status(status, locked):
     _tariffs()
     _, user = _tenant(apartment, "ivanov")
     period = _current_period()
-    MonthlyStatement.objects.create(apartment=apartment, period=period,
-                                    total=Decimal("500.00"), status=status)
+    from modules.tenancy import api as tenancy_api
+    MonthlyStatement.objects.create(
+        apartment=apartment, period=period, total=Decimal("500.00"),
+        status=status,
+        tenancy_id=tenancy_api.tenancy_for(apartment.pk, period).tenancy_id)
     client = _login(user)
 
     assert client.get("/").context["locked"] is locked

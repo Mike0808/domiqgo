@@ -60,6 +60,12 @@ def list_tenancies_for(property_id: int) -> list[Tenancy]:
     return queries.list_tenancies_for(_repository(), property_id)
 
 
+def list_tenancies_for_account(account_id: int) -> list[Tenancy]:
+    """Все договоры учётной записи — история счетов жильца собирается по
+    ним, а не по квартире (шаг E2)."""
+    return queries.list_tenancies_for_account(_repository(), account_id)
+
+
 # ------------------------------------------------------------------- команды
 
 def start_tenancy(property_id: int, account_id: int, full_name: str,
@@ -101,6 +107,7 @@ __all__ = [
     "PropertyNotFound", "TenancyNotFound", "PeriodOverlap",
     "PropertyOutOfService", "EndBeforeStart", "AlreadyEnded",
     "tenancy_for", "get_tenancy", "active_tenancy_for_account",
-    "list_tenancies_for", "start_tenancy", "end_tenancy",
+    "list_tenancies_for", "list_tenancies_for_account",
+    "start_tenancy", "end_tenancy",
     "correct_tenancy", "renew_tenancy",
 ]

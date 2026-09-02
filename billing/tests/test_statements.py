@@ -62,6 +62,7 @@ def test_generate_uses_previous_period_as_baseline():
 
     stmt = generate_statement(a, date(2026, 7, 1))
 
+    assert stmt.tenancy_id is not None         # счёт знает свой договор (E2)
     assert stmt.total == Decimal("22950.00")   # 22968.59 floored to 50
     by = {l["code"]: l for l in stmt.lines}
     assert by["rounding"]["amount"] == "-18.59"

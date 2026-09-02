@@ -22,5 +22,8 @@ class TenancyRepository(Protocol):
     def active_for_account(self, account_id: int, day: date) -> Tenancy | None:
         """Договор учётной записи, действующий в этот день."""
 
+    def list_for_account(self, account_id: int) -> list[Tenancy]:
+        """Все договоры записи, от ранних к поздним."""
+
     def mark_out_of_service(self, property_id: int, out: bool) -> None:
         """Запомнить факт из события Properties."""

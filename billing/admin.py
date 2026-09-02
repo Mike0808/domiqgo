@@ -393,8 +393,18 @@ class PaymentInline(admin.TabularInline):
 
 @admin.register(MonthlyStatement)
 class MonthlyStatementAdmin(admin.ModelAdmin):
-    list_display = ("apartment", "period", "total", "status")
-    list_filter = ("status", "apartment")
+    list_display = ("apartment", "period", "total", "status", "contract")
+    list_filter = ("status", "apartment",
+                   ("tenancy_id", admin.EmptyFieldListFilter))
+
+    @admin.display(description="Договор", ordering="tenancy_id")
+    def contract(self, obj):
+        """Счета за периоды до заведения жильца остались без договора
+        (миграция E2 их не выдумывает) — их видно здесь и фильтром, а
+        назначить договор можно в форме начисления."""
+        if obj.tenancy_id is None:
+            return format_html('<span style="color:#b32d2e">без договора</span>')
+        return f"#{obj.tenancy_id}"
     date_hierarchy = "period"
     actions = [regenerate_statements]
     inlines = [PaymentInline]

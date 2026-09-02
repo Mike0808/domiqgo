@@ -14,14 +14,30 @@ def _checked(amount):
             f"Сумма платежа обязана быть больше нуля, получено: {amount}.")
     return amount
 
-def earliest_unpaid_statement(apartment):
+def earliest_unpaid_statement(contract):
+    """Самый ранний непогашенный счёт договора (правило — ADR-0014).
+
+    Счета без договора (наследие миграции E2) учитываются по квартире
+    договора: они ничьи, пока владелец не разберёт их вручную, но платёж
+    жильца этой квартиры чаще всего про них. Уйдёт вместе с legacy-`billing/`.
+    """
+    from django.db.models import Q
+
     return (MonthlyStatement.objects
-            .filter(apartment=apartment, status=MonthlyStatement.UNPAID)
+            .filter(Q(tenancy_id=contract.tenancy_id)
+                    | Q(apartment_id=contract.property_id, tenancy_id=None),
+                    status=MonthlyStatement.UNPAID)
             .order_by("period").first())
 
 @transaction.atomic
 def attach_receipt(tenant, file, source, filename=None):
-    stmt = earliest_unpaid_statement(tenant.apartment)
+    from django.utils import timezone
+
+    from modules.tenancy import api as tenancy
+
+    contract = tenancy.active_tenancy_for_account(tenant.user_id,
+                                                  timezone.localdate())
+    stmt = earliest_unpaid_statement(contract) if contract else None
     if stmt is None:
         raise NoUnpaidStatementError("Нет неоплаченных начислений.")
     payment = Payment(statement=stmt, source=source)

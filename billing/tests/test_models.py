@@ -21,11 +21,13 @@ def test_reading_unique_per_meter_period():
         MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1),
                                     resource="cold_water", value=Decimal("101"))
 
-def test_statement_unique_per_period():
+def test_statement_unique_per_tenancy_and_period():
+    """Ключ счёта — (договор, период), а не (квартира, период): шаг E2."""
     a = Apartment.objects.create(label="кв. 2")
-    MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1))
+    MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1), tenancy_id=1)
+    MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1), tenancy_id=2)
     with pytest.raises(IntegrityError):
-        MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1))
+        MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1), tenancy_id=1)
 
 def test_tenant_links_user_and_apartment():
     a = Apartment.objects.create(label="кв. 3")

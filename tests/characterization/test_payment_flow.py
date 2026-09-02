@@ -26,8 +26,11 @@ pytestmark = [pytest.mark.django_db, pytest.mark.characterization]
 
 
 def _tenant_with_unpaid_invoice():
+    from billing.tests.tenancies import let_in
+
     apartment = Apartment.objects.create(label="кв")
     user = User.objects.create_user("ivanov", password="pass12345")
+    let_in(apartment, account_id=user.pk)   # платёж ищет счёт договора (E2)
     tenant = Tenant.objects.create(user=user, apartment=apartment)
     invoice = MonthlyStatement.objects.create(
         apartment=apartment, period=date(2026, 7, 1), total=Decimal("1000.00"),

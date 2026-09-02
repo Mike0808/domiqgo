@@ -11,8 +11,11 @@ pytestmark = pytest.mark.django_db
 WEBHOOK = "/bot/telegram/webhook/"
 
 def _linked_tenant(chat_id=555):
+    from billing.tests.tenancies import let_in
+
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("t", password="x")
+    let_in(a, account_id=u.pk)   # платёж ищет счёт договора (шаг E2)
     Tenant.objects.create(user=u, apartment=a,
                           messenger_platform="telegram", messenger_chat_id=str(chat_id))
     return a

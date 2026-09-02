@@ -58,7 +58,12 @@ def current_month(request):
     serials = {m.resource: m.serial_number
                for m in metering.get_expected_meters(apartment.pk)}
     period = _current_period()
-    statement = MonthlyStatement.objects.filter(apartment=apartment, period=period).first()
+    # Счёт ключуется договором периода (шаг E2): показывается тот счёт,
+    # который выставлен действовавшему на первое число договору.
+    of_record = tenancy.tenancy_for(apartment.pk, period)
+    statement = (MonthlyStatement.objects
+                 .filter(tenancy_id=of_record.tenancy_id, period=period).first()
+                 if of_record else None)
     locked = statement is not None and statement.status in (MonthlyStatement.PAID, MonthlyStatement.PENDING)
 
     if request.method == "POST":
@@ -114,9 +119,12 @@ def history(request):
     closed = _cabinet_gate(request)
     if closed is not None:
         return closed
+    # Жилец видит счета своих договоров, а не квартиры (шаг E2, дефект №6):
+    # счета прежнего жильца больше не переезжают вместе со стенами.
+    mine = [t.tenancy_id
+            for t in tenancy.list_tenancies_for_account(request.user.pk)]
     statements = (MonthlyStatement.objects
-                  .filter(apartment_id=_contract_for(request).property_id)
-                  .order_by("-period"))
+                  .filter(tenancy_id__in=mine).order_by("-period"))
     return render(request, "billing/history.html", {"statements": statements})
 
 @login_required

@@ -16,8 +16,11 @@ def media_isolation(settings, tmp_path):
 
 
 def _tenant(chat_id=None):
+    from billing.tests.tenancies import let_in
+
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("t", password="x")
+    let_in(a, account_id=u.pk)   # платёж ищет счёт договора (шаг E2)
     t = Tenant.objects.create(user=u, apartment=a)
     if chat_id is not None:
         t.messenger_platform = "telegram"; t.messenger_chat_id = str(chat_id); t.save()
@@ -97,8 +100,12 @@ def test_handle_update_ignores_irrelevant_update():
 def test_the_bot_greets_the_tenant_by_the_name_on_the_tenancy():
     from billing.tests.tenancies import let_in
 
-    t, a = _tenant()
-    let_in(a, account_id=t.user_id, full_name="Иванов Иван")
+    from modules.tenancy import api as tenancy
+    from django.utils import timezone
+
+    t, a = _tenant()   # договор уже заведён помощником; поправим в нём ФИО
+    contract = tenancy.active_tenancy_for_account(t.user_id, timezone.localdate())
+    tenancy.correct_tenancy(contract.tenancy_id, full_name="Иванов Иван")
     code = generate_link_code(t)
 
     reply = process_message(FakeAdapter(), _msg(text=f"/start {code}"))

@@ -9,6 +9,14 @@ from billing.models import Apartment, Tenant, MonthlyStatement
 from modules.tariffs.api import publish_tariff_version
 from billing.tests.tenancies import let_in
 
+
+def _cid(u):
+    """Номер действующего договора — им ключуется счёт (шаг E2)."""
+    from modules.tenancy import api as tenancy
+
+    return tenancy.active_tenancy_for_account(
+        u.pk, timezone.localdate()).tenancy_id
+
 pytestmark = pytest.mark.django_db
 
 def _period_first_of_this_month():
@@ -93,7 +101,8 @@ def test_resubmit_with_backward_meter_preserves_prior_readings(tenant_setup):
 
 def test_tenant_cannot_see_other_apartment_history(tenant_setup):
     a, u = tenant_setup
-    MonthlyStatement.objects.create(apartment=a, period=date(2026, 5, 1), total=Decimal("123"))
+    MonthlyStatement.objects.create(apartment=a, period=date(2026, 5, 1),
+                                    total=Decimal("123"), tenancy_id=_cid(u))
     other = Apartment.objects.create(label="чужая кв")
     MonthlyStatement.objects.create(apartment=other, period=date(2026, 5, 1), total=Decimal("999"))
     c = _login(u)
@@ -106,7 +115,7 @@ def test_paid_month_locks_readings(tenant_setup):
     a, u = tenant_setup
     period = _period_first_of_this_month()
     MonthlyStatement.objects.create(apartment=a, period=period, total=Decimal("500"),
-                                    status=MonthlyStatement.PAID)
+                                    status=MonthlyStatement.PAID, tenancy_id=_cid(u))
     c = _login(u)
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
     assert resp.status_code == 302               # rejected with a message, not applied
@@ -121,7 +130,7 @@ def test_pending_month_locks_readings(tenant_setup):
     a, u = tenant_setup
     period = _period_first_of_this_month()
     MonthlyStatement.objects.create(apartment=a, period=period, total=Decimal("500"),
-                                    status=MonthlyStatement.PENDING)
+                                    status=MonthlyStatement.PENDING, tenancy_id=_cid(u))
     c = _login(u)
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
     assert resp.status_code == 302               # rejected with a message, not applied

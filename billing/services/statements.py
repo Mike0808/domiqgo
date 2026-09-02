@@ -115,8 +115,20 @@ def generate_statement(apartment, period: date) -> MonthlyStatement:
     consumption = _consumption_for(apartment, period, metered_resources(apartment))
     tariffs = _tariffs_for(period)
     lines, total = compute_statement(config, consumption, tariffs)
-    stmt, _created = MonthlyStatement.objects.update_or_create(
-        apartment=apartment, period=period,
-        defaults={"lines": [line_to_dict(l) for l in lines], "total": total},
-    )
+    values = {"apartment": apartment, "lines": [line_to_dict(l) for l in lines],
+              "total": total}
+    contract = tenancy.tenancy_for(apartment.pk, period)
+    # Счёт ключуется договором периода (шаг E2). Строка тех же квартиры и
+    # месяца, оставшаяся без договора с миграции, усыновляется, а не
+    # дублируется: это тот же счёт, у которого наконец появился адресат.
+    stmt = (MonthlyStatement.objects
+            .filter(tenancy_id=contract.tenancy_id, period=period).first()
+            or MonthlyStatement.objects
+            .filter(apartment=apartment, period=period, tenancy_id=None).first())
+    if stmt is None:
+        stmt = MonthlyStatement(tenancy_id=contract.tenancy_id, period=period)
+    stmt.tenancy_id = contract.tenancy_id
+    for field, value in values.items():
+        setattr(stmt, field, value)
+    stmt.save()
     return stmt

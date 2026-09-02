@@ -64,6 +64,11 @@ class MonthlyStatement(models.Model):
     STATUS_CHOICES = [(UNPAID, "Не оплачено"), (PENDING, "На проверке"), (PAID, "Оплачено")]
 
     apartment = models.ForeignKey(Apartment, on_delete=models.PROTECT, related_name="statements")
+    #: Договор, которому выставлен счёт (шаг E2, ADR-0024) — идентификатором,
+    #: без FK. Пусто у начислений за периоды до заведения жильца: такие
+    #: разбираются владельцем вручную (фильтр «без договора» в админке).
+    tenancy_id = models.PositiveIntegerField("Договор", null=True, blank=True,
+                                             db_index=True)
     period = models.DateField("Период")
     lines = models.JSONField("Строки начисления", default=list)
     total = models.DecimalField("Итого", max_digits=12, decimal_places=2, default=Decimal("0"))
@@ -72,7 +77,12 @@ class MonthlyStatement(models.Model):
     class Meta:
         verbose_name = "Начисление"
         verbose_name_plural = "Начисления"
-        unique_together = [("apartment", "period")]
+        # Ключ счёта — (договор, период), а не (квартира, период): смена
+        # жильца в середине месяца даёт два счёта рядом (шаг E2, дефект №6).
+        constraints = [models.UniqueConstraint(
+            condition=models.Q(tenancy_id__isnull=False),
+            fields=("tenancy_id", "period"),
+            name="one_statement_per_tenancy_period")]
         ordering = ["-period"]
 
     def __str__(self):
