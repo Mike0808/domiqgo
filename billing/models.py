@@ -18,14 +18,10 @@ class Tenant(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
                                 related_name="tenant")
     apartment = models.ForeignKey(Apartment, on_delete=models.PROTECT, related_name="tenants")
-    # ФИО уехало в договор (`modules/tenancy/`) шагом D1c: это реквизит
-    # стороны договора, зафиксированный на момент его заключения (ADR-0010).
-    # Plan 2 hooks:
-    messenger_platform = models.CharField(max_length=10, blank=True)
-    messenger_chat_id = models.CharField(max_length=64, blank=True)
-    # Согласие на обработку ПДн (C4a) и код привязки (C4c) уехали в
-    # `modules/identity/`: они принадлежат учётной записи, а не профилю
-    # жильца. Читать через `modules.identity.api`.
+    # ФИО уехало в договор (D1c, ADR-0010), согласие и код привязки — в
+    # Identity (C4a, C4c), адрес мессенджера — в Notifications (F1): канал
+    # доставки принадлежит учётной записи, а не проживанию. От профиля
+    # остались связи; их разберёт расформирование `billing/`.
 
     class Meta:
         verbose_name = "Жилец"

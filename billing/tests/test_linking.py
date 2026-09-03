@@ -25,9 +25,8 @@ def test_link_binds_chat_and_is_single_use():
     code = generate_link_code(t)
     linked = link_chat("telegram", 12345, code)
     assert linked.pk == t.pk
-    t.refresh_from_db()
-    assert t.messenger_platform == "telegram"
-    assert t.messenger_chat_id == "12345"
+    from modules.notifications import api as notifications
+    assert notifications.resolve_account_by_channel("telegram", "12345") == t.user_id
     with pytest.raises(InvalidLinkCodeError):     # cannot reuse
         link_chat("telegram", 999, code)
 

@@ -35,7 +35,7 @@ def test_tenant_links_user_and_apartment():
     t = Tenant.objects.create(user=u, apartment=a)
     assert t.apartment == a
     assert u.tenant == t
-    assert t.messenger_platform == ""   # Plan 2 hook present but empty
+    # мессенджера на профиле больше нет: канал доставки — в Notifications (F1)
 
 def test_meter_unique_per_apartment_and_kind(db):
     from decimal import Decimal

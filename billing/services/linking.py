@@ -1,17 +1,17 @@
-"""Привязка чата мессенджера к жильцу.
+"""Привязка чата мессенджера — оркестрация двух модулей (ADR-0017).
 
-Код привязки уехал в `modules/identity/` шагом C4c: он доказывает личность,
-а не адрес доставки. Здесь осталась вторая половина — запись платформы и
-чата, — и она ждёт модуля Notifications (`BindChannel`, ADR-0017). Порядок
-уже целевой: сначала Identity говорит, чья это запись, потом привязывается
-канал.
+Разделённая команда собрана целиком (шаг F1): Identity гасит код и говорит,
+чья это запись; Notifications привязывает адрес. Оркеструет интерфейсный
+слой бота — тот, кто разобрал входящее сообщение.
 """
 
 from modules.identity import api as identity
+from modules.notifications import api as notifications
 
 from ..models import Tenant
 
 InvalidLinkCodeError = identity.InvalidLinkCodeError
+AddressAlreadyBound = notifications.AddressAlreadyBound
 
 
 def generate_link_code(tenant):
@@ -20,8 +20,5 @@ def generate_link_code(tenant):
 
 def link_chat(platform, chat_id, code):
     account_id = identity.redeem_link_code(code)
-    tenant = Tenant.objects.get(user_id=account_id)
-    tenant.messenger_platform = platform
-    tenant.messenger_chat_id = str(chat_id)
-    tenant.save(update_fields=["messenger_platform", "messenger_chat_id"])
-    return tenant
+    notifications.bind_channel(account_id, platform, str(chat_id))
+    return Tenant.objects.get(user_id=account_id)

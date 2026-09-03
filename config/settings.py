@@ -60,6 +60,8 @@ INSTALLED_APPS = [
     "modules.identity.apps.IdentityConfig",
     # Этап D: первый не-лист графа — зависит от Identity и Properties.
     "modules.tenancy.apps.TenancyConfig",
+    # Этап F: доставка сообщений.
+    "modules.notifications.apps.NotificationsConfig",
 ]
 
 SITE_ID = 1
@@ -196,6 +198,7 @@ MIGRATION_MODULES = {
     "properties": "modules.properties.infrastructure.migrations",
     "identity": "modules.identity.infrastructure.migrations",
     "tenancy": "modules.tenancy.infrastructure.migrations",
+    "notifications": "modules.notifications.infrastructure.migrations",
 }
 
 

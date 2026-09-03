@@ -16,8 +16,9 @@ def _linked_tenant(chat_id=555):
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("t", password="x")
     let_in(a, account_id=u.pk)   # платёж ищет счёт договора (шаг E2)
-    Tenant.objects.create(user=u, apartment=a,
-                          messenger_platform="telegram", messenger_chat_id=str(chat_id))
+    Tenant.objects.create(user=u, apartment=a)
+    from modules.notifications import api as notifications
+    notifications.bind_channel(u.pk, "telegram", str(chat_id))
     return a
 
 def test_webhook_rejects_missing_secret(settings):

@@ -23,7 +23,8 @@ def _tenant(chat_id=None):
     let_in(a, account_id=u.pk)   # платёж ищет счёт договора (шаг E2)
     t = Tenant.objects.create(user=u, apartment=a)
     if chat_id is not None:
-        t.messenger_platform = "telegram"; t.messenger_chat_id = str(chat_id); t.save()
+        from modules.notifications import api as notifications
+        notifications.bind_channel(u.pk, "telegram", str(chat_id))
     return t, a
 
 
@@ -37,8 +38,8 @@ def test_start_with_valid_code_links_chat():
     t, _ = _tenant()
     code = generate_link_code(t)
     reply = process_message(FakeAdapter(), _msg(text=f"/start {code}"))
-    t.refresh_from_db()
-    assert t.messenger_chat_id == "555"
+    from modules.notifications import api as notifications
+    assert notifications.resolve_account_by_channel("telegram", "555") == t.user_id
     assert "привязан" in reply.lower()
 
 

@@ -3,9 +3,11 @@ import re
 from django.core.files.base import ContentFile
 from django.utils import timezone
 
+from modules.notifications import api as notifications
+
 from ..models import Tenant
 from .intake import attach_receipt, NoUnpaidStatementError
-from .linking import link_chat, InvalidLinkCodeError
+from .linking import AddressAlreadyBound, link_chat, InvalidLinkCodeError
 
 MONTHS_RU = ["", "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
              "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
@@ -18,9 +20,13 @@ def _period_ru(d):
 
 
 def _find_tenant(msg):
-    return Tenant.objects.filter(
-        messenger_platform=msg.platform, messenger_chat_id=str(msg.chat_id)
-    ).first()
+    """Кому принадлежит чат, знает Notifications (шаг F1); профиль жильца —
+    только чтобы приложить чек и поздороваться."""
+    account_id = notifications.resolve_account_by_channel(
+        msg.platform, str(msg.chat_id))
+    if account_id is None:
+        return None
+    return Tenant.objects.filter(user_id=account_id).first()
 
 
 def process_message(adapter, msg) -> str:
@@ -34,6 +40,9 @@ def process_message(adapter, msg) -> str:
             tenant = link_chat(msg.platform, msg.chat_id, code)
         except InvalidLinkCodeError:
             return "Неверный код. Обратитесь к арендодателю."
+        except AddressAlreadyBound:
+            return ("Этот чат уже привязан к другой учётной записи. "
+                    "Сначала отвяжите его там или обратитесь к арендодателю.")
         return f"Аккаунт привязан: {tenant}. Пришлите фото чека для оплаты."
 
     tenant = _find_tenant(msg)
