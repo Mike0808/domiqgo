@@ -2,7 +2,7 @@ from datetime import date
 from django.contrib.auth.models import User
 import pytest
 from billing.models import Apartment, Tenant, MonthlyStatement, Payment
-from billing.messengers.base import IncomingMessage
+from modules.notifications.infrastructure.transports.base import IncomingMessage
 from billing.services.bot import process_message, handle_update
 from billing.services.linking import generate_link_code
 from billing.tests.fakes import FakeAdapter

@@ -30,3 +30,46 @@ def list_for(account_id: int) -> list[Channel]:
     return [_to_domain(r) for r in
             models.Channel.objects.filter(account_id=account_id)
             .order_by("platform")]
+
+
+# ---------------------------------------------------------------- очередь
+
+def _message_to_domain(row: models.OutgoingMessage):
+    from ..domain.message import OutgoingMessage as DomainMessage
+
+    return DomainMessage(
+        message_id=row.pk, account_id=row.account_id, platform=row.platform,
+        address=row.address, text=row.text, state=row.state,
+        attempts=row.attempts, last_error=row.last_error)
+
+
+def add(message):
+    row = models.OutgoingMessage.objects.create(
+        account_id=message.account_id, platform=message.platform,
+        address=message.address, text=message.text, state=message.state)
+    return _message_to_domain(row)
+
+
+def save(message):
+    models.OutgoingMessage.objects.filter(pk=message.message_id).update(
+        state=message.state, attempts=message.attempts,
+        last_error=message.last_error)
+
+
+def get(message_id: int):
+    row = models.OutgoingMessage.objects.filter(pk=message_id).first()
+    return _message_to_domain(row) if row is not None else None
+
+
+def queued():
+    return [_message_to_domain(r) for r in
+            models.OutgoingMessage.objects.filter(state="queued")]
+
+
+def messages_for(account_id: int):
+    return [_message_to_domain(r) for r in
+            models.OutgoingMessage.objects.filter(account_id=account_id)]
+
+
+def record_run(sent: int, failed: int) -> None:
+    models.DispatchRun.objects.create(sent=sent, failed=failed)

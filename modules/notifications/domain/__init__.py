@@ -2,10 +2,18 @@
 
 Не импортирует django и прочие фреймворки — только stdlib.
 
-Пока здесь канал доставки (инварианты 1–3). Исходящее сообщение — второй
-корень агрегата — придёт с очередью отправки (шаг F2).
+Канал доставки (инварианты 1–3) и исходящее сообщение (инварианты 4–6).
+Общего инварианта между ними нет — потому и два корня.
 """
 
 from .channel import AddressAlreadyBound, Channel
+from .message import (
+    CANCELLED, FAILED, MAX_ATTEMPTS, QUEUED, SENT,
+    AlreadySent, NotFailed, NotQueued, OutgoingMessage,
+)
 
-__all__ = ["AddressAlreadyBound", "Channel"]
+__all__ = [
+    "AddressAlreadyBound", "Channel",
+    "OutgoingMessage", "AlreadySent", "NotFailed", "NotQueued",
+    "MAX_ATTEMPTS", "QUEUED", "SENT", "FAILED", "CANCELLED",
+]

@@ -1,6 +1,6 @@
 import pytest
-from billing.messengers.base import MessengerAdapter, IncomingMessage
-from billing.messengers.max import MaxAdapter
+from modules.notifications.infrastructure.transports.base import MessengerAdapter, IncomingMessage
+from modules.notifications.infrastructure.transports.max import MaxAdapter
 
 def test_incoming_message_defaults():
     m = IncomingMessage(platform="telegram", chat_id="1")

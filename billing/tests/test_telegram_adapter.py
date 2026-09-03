@@ -1,5 +1,5 @@
-import billing.messengers.telegram as tg
-from billing.messengers.telegram import TelegramAdapter
+import modules.notifications.infrastructure.transports.telegram as tg
+from modules.notifications.infrastructure.transports.telegram import TelegramAdapter
 
 def test_parse_photo_picks_largest_size():
     update = {"message": {"chat": {"id": 42}, "photo": [

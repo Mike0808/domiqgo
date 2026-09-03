@@ -7,9 +7,20 @@
 | `ResolveAccountByChannel` | `resolve_account_by_channel` |
 | `ListChannels` | `list_channels` |
 
-**Чего здесь пока нет.** Очередь исходящих (`DispatchPending`,
-`ResendMessage`, `CancelPending`, `ListMessages`, `GetDeliveryState`) — шаг
-**F2**; подписки на события и шаблоны — **F3**; почта — **F4**.
+| `EnqueueMessage` (внутренняя) | `enqueue_message` |
+| `DispatchPending` | `dispatch_pending` |
+| `ResendMessage` | `resend_message` |
+| `CancelPending` | `cancel_pending` |
+| `ListMessages` | `list_messages` |
+| `GetDeliveryState` | `get_delivery_state` |
+
+**Чего здесь пока нет.** Подписки на события и шаблоны — **F3**; почта —
+**F4**.
+
+**Постановка в очередь не отправляет.** Отправкой занимается прогон
+(`dispatch_pending` — по расписанию, командой `dispatch_notifications`, или
+из админки): слать в обработчике события значило бы держать транзакцию
+издателя на время разговора с Telegram.
 
 **Привязка не проверяет существования учётной записи** (инвариант 3):
 вызывающий только что получил идентификатор от Identity, погасив одноразовый
@@ -19,6 +30,7 @@
 
 from ..application import commands, queries
 from ..domain.channel import AddressAlreadyBound, Channel
+from ..domain.message import AlreadySent, NotFailed, NotQueued, OutgoingMessage
 
 
 def _registry():
@@ -58,7 +70,50 @@ def unbind_channel(account_id: int, platform: str) -> None:
 
 
 __all__ = [
-    "AddressAlreadyBound", "Channel",
+    "AddressAlreadyBound", "Channel", "OutgoingMessage",
+    "AlreadySent", "NotFailed", "NotQueued",
     "resolve_account_by_channel", "list_channels",
     "bind_channel", "unbind_channel",
+    "enqueue_message", "dispatch_pending", "resend_message",
+    "cancel_pending", "list_messages", "get_delivery_state",
 ]
+
+
+# ------------------------------------------------------------- очередь (F2)
+
+def enqueue_message(account_id: int, text: str) -> int | None:
+    """Составить сообщение и поставить в очередь; канал и текст фиксируются.
+
+    Получателю без каналов сообщение не ставится — вернётся `None`.
+    """
+    message = commands.enqueue_message(_registry(), _registry(), account_id, text)
+    return message.message_id if message is not None else None
+
+
+def dispatch_pending() -> tuple[int, int]:
+    """Прогон отправки; каждый прогон оставляет строку в журнале."""
+    from ..infrastructure.transports import transport_for
+
+    registry = _registry()
+    sent, failed = commands.dispatch_pending(registry, transport_for)
+    registry.record_run(sent, failed)
+    return sent, failed
+
+
+def resend_message(message_id: int) -> None:
+    """Повторная отправка недоставленного — вручную, владельцем."""
+    commands.resend_message(_registry(), message_id)
+
+
+def cancel_pending(message_id: int) -> None:
+    """Снять неотправленное сообщение с очереди."""
+    commands.cancel_pending(_registry(), message_id)
+
+
+def list_messages(account_id: int) -> list[OutgoingMessage]:
+    """Журнал: что и когда отправлялось получателю."""
+    return queries.list_messages(_registry(), account_id)
+
+
+def get_delivery_state(message_id: int) -> str | None:
+    return queries.delivery_state(_registry(), message_id)

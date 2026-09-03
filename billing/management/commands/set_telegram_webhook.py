@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand, CommandError
-from billing.messengers.telegram import TelegramAdapter
+from modules.notifications.infrastructure.transports.telegram import TelegramAdapter
 
 class Command(BaseCommand):
     help = "Register the Telegram webhook URL (production delivery)."

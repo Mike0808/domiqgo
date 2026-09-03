@@ -17,3 +17,7 @@ class NotificationsConfig(AppConfig):
     def import_models(self):
         super().import_models()
         self.models_module = import_module(f"{self.name}.infrastructure.models")
+
+    def ready(self):
+        # Админка лежит в `infrastructure/` — Django сам туда не заглянет.
+        import_module(f"{self.name}.infrastructure.admin")

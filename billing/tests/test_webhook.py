@@ -36,7 +36,7 @@ def test_webhook_processes_text_update(settings, monkeypatch):
     settings.TELEGRAM_WEBHOOK_SECRET = "s3cret"
     _linked_tenant(555)
     # Don't hit the network on the outbound reply.
-    import billing.messengers.telegram as tg
+    import modules.notifications.infrastructure.transports.telegram as tg
     sent = {}
     class Resp:
         def raise_for_status(self): pass

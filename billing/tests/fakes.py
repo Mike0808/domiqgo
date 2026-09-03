@@ -1,4 +1,4 @@
-from billing.messengers.base import MessengerAdapter
+from modules.notifications.infrastructure.transports.base import MessengerAdapter
 
 
 class FakeAdapter(MessengerAdapter):

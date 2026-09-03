@@ -11,3 +11,12 @@ def resolve_account_by_channel(registry: ChannelRegistry, platform: str,
 
 def list_channels(registry: ChannelRegistry, account_id: int) -> list:
     return registry.list_for(account_id)
+
+
+def list_messages(outbox, account_id: int) -> list:
+    return outbox.messages_for(account_id)
+
+
+def delivery_state(outbox, message_id: int) -> str | None:
+    message = outbox.get(message_id)
+    return message.state if message is not None else None

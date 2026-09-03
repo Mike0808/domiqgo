@@ -13,6 +13,17 @@ Internet ──▶ caddy container (:80/:443, auto Let's Encrypt)
 WireGuard itself (51820/udp) stays published directly by the wg-easy container.
 ```
 
+## Notifications dispatch (stage F2)
+
+Уведомления копятся в очереди; доставляет их прогон. Раз в несколько минут:
+
+```bash
+docker compose exec web python manage.py dispatch_notifications
+```
+
+(cron на хосте или systemd-таймер). Если прогон молчит, админка покажет
+красное предупреждение в разделе «Исходящие сообщения».
+
 ## Prerequisites
 
 - Docker Engine + the compose plugin (`docker compose version`).

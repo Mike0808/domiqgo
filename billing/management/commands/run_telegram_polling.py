@@ -2,7 +2,7 @@ import time
 import requests
 from django.conf import settings
 from django.core.management.base import BaseCommand
-from billing.messengers.telegram import TelegramAdapter, API
+from modules.notifications.infrastructure.transports.telegram import TelegramAdapter, API
 from billing.services.bot import handle_update
 
 def poll_once(adapter, offset):

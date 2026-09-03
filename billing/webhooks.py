@@ -4,7 +4,10 @@ import logging
 from django.conf import settings
 from django.http import HttpResponse, HttpResponseForbidden
 from django.views.decorators.csrf import csrf_exempt
-from .messengers.telegram import TelegramAdapter
+# Транспортный адаптер — инфраструктура Notifications (шаг F2);
+# интерфейсный слой пользуется им же, в домен модуля не заходя
+# (спецификация Notifications, «Не входит»).
+from modules.notifications.infrastructure.transports.telegram import TelegramAdapter
 from .services.bot import handle_update
 
 logger = logging.getLogger(__name__)
