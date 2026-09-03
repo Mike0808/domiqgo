@@ -19,11 +19,15 @@ from decimal import Decimal
 class PaymentSubmitted:
     """Жилец приложил чек: платёж заявлен и ждёт решения владельца.
 
-    P1: Notifications (владельцу — «пришёл чек») — подписчик на этапе F.
+    P1: Notifications (владельцу — «пришёл чек») ✔ F3.
+    `tenancy_id` в нагрузке — идентификатор, а не наименование (правило 4.2):
+    без него Notifications пришлось бы спрашивать Billing, чей это счёт, а
+    эта зависимость запрещена матрицей §2. Пусто у счетов без договора.
     """
 
     payment_id: int
     statement_id: int
+    tenancy_id: int | None
     source: str
     at: datetime
 
@@ -39,6 +43,7 @@ class PaymentConfirmed:
 
     payment_id: int
     statement_id: int
+    tenancy_id: int | None
     amount: Decimal
     at: datetime
 
@@ -53,6 +58,7 @@ class PaymentRejected:
 
     payment_id: int
     statement_id: int
+    tenancy_id: int | None
     reason: str
     at: datetime
 
@@ -69,6 +75,7 @@ class PaymentVoided:
 
     payment_id: int
     statement_id: int
+    tenancy_id: int | None
     amount: Decimal
     reason: str
     at: datetime

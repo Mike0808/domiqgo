@@ -82,7 +82,15 @@ def test_allowed_matrix_covers_every_module():
 
 @pytest.mark.parametrize("path", _python_files(), ids=lambda p: str(p.name))
 def test_module_calls_only_allowed_modules(path):
-    """Обращение к чужому api/ разрешено только по матрице."""
+    """Обращение к чужому api/ разрешено только по матрице.
+
+    Импорт чужих `events/` под матрицу не подпадает: контракты событий
+    публичны «наравне с api/» (правило 4.x), а реакция на факт через шину —
+    не синхронный вызов, который матрица §2 и ограничивает. Уточнение шага
+    F3: Notifications подписан на события Billing и Payments, вызывать их
+    API ему по-прежнему запрещено — это ловит первая же попытка импорта
+    `modules.billing.api`.
+    """
     owner = _owner(path)
     violations = []
     for name in _imported_names(path):
@@ -92,6 +100,8 @@ def test_module_calls_only_allowed_modules(path):
         target = parts[1]
         if target == owner or target not in ALLOWED:
             continue
+        if len(parts) > 2 and parts[2] == "events":
+            continue   # контракт события — не вызов
         if target not in ALLOWED[owner]:
             violations.append(name)
     assert not violations, (

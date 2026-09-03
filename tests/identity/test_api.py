@@ -270,3 +270,18 @@ def test_restoring_gives_the_access_back_without_losing_anything():
 
 def test_an_unknown_account_is_not_suspended():
     assert api.get_account(10**6).suspended is False
+
+
+# ------------------------------------------------------- владельцы (F3)
+
+def test_owner_accounts_come_from_the_registry_and_the_bridge():
+    from django.contrib.auth.models import User
+
+    boss = User.objects.create_user("boss", is_staff=True)      # мост от флага
+    declared = User.objects.create_user("declared")
+    api.register_account(declared.pk, api.AccountType.OWNER)    # реестр
+    tenant = User.objects.create_user("tenant")                  # жилец
+    suspended = User.objects.create_user("gone", is_staff=True)
+    api.suspend_account(suspended.pk, JULY)                      # не в счёт
+
+    assert api.list_owner_accounts() == sorted([boss.pk, declared.pk])

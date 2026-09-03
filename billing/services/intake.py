@@ -81,7 +81,8 @@ def attach_receipt(tenant, file, source, filename=None):
     payment.file.save(filename or getattr(file, "name", "receipt"), file, save=False)
     payment.save()
     publish(PaymentSubmitted(payment_id=payment.pk, statement_id=stmt.pk,
-                             source=source, at=timezone.now()))
+                             tenancy_id=stmt.tenancy_id, source=source,
+                             at=timezone.now()))
     return payment
 
 
@@ -96,6 +97,7 @@ def confirm_payment(payment, amount):
     payment.save(update_fields=["status", "amount"])
     publish(PaymentConfirmed(payment_id=payment.pk,
                              statement_id=payment.statement_id,
+                             tenancy_id=payment.statement.tenancy_id,
                              amount=payment.amount, at=timezone.now()))
 
 
@@ -112,6 +114,7 @@ def record_payment(statement, amount, note=""):
         statement=statement, source=Payment.MANUAL, status=Payment.CONFIRMED,
         amount=_checked(amount), note=note)
     publish(PaymentConfirmed(payment_id=payment.pk, statement_id=statement.pk,
+                             tenancy_id=statement.tenancy_id,
                              amount=payment.amount, at=timezone.now()))
     return payment
 
@@ -133,6 +136,7 @@ def reject_payment(payment, note=""):
     payment.save(update_fields=fields)
     publish(PaymentRejected(payment_id=payment.pk,
                             statement_id=payment.statement_id,
+                            tenancy_id=payment.statement.tenancy_id,
                             reason=note, at=timezone.now()))
 
 
@@ -157,5 +161,6 @@ def void_payment(payment, reason):
     payment.save(update_fields=["status", "note"])
     publish(PaymentVoided(
         payment_id=payment.pk, statement_id=payment.statement_id,
+        tenancy_id=payment.statement.tenancy_id,
         amount=payment.amount if payment.amount is not None else Decimal("0"),
         reason=reason, at=timezone.now()))

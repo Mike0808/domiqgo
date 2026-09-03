@@ -66,6 +66,13 @@ def get_account(account_id: int) -> Account:
     return queries.get_account(_repository(), account_id)
 
 
+def list_owner_accounts() -> list[int]:
+    """Действующие учётные записи владельцев — адресаты сообщений «пришёл
+    чек» (интерфейсный слой передаёт этот запрос Notifications при подписке:
+    сам модуль уведомлений Identity не вызывает — матрица §2)."""
+    return queries.list_owner_accounts(_repository())
+
+
 def has_current_consent(account_id: int, policy_version: str) -> bool:
     """Дано ли согласие на эту редакцию политики."""
     return queries.has_current_consent(_repository(), account_id, policy_version)

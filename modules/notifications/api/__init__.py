@@ -81,6 +81,18 @@ __all__ = [
 
 # ------------------------------------------------------------- очередь (F2)
 
+def subscribe_to_domain_events(owner_accounts) -> None:
+    """Подписать модуль на события системы (шаг F3).
+
+    `owner_accounts` — вызываемое, отдающее учётные записи владельцев для
+    сообщений «пришёл чек»; его передаёт интерфейсный слой, у которого есть
+    Identity, — сам модуль Identity не вызывает (матрица §2).
+    """
+    from ..application import subscriptions
+
+    subscriptions.wire(owner_accounts)
+
+
 def enqueue_message(account_id: int, text: str) -> int | None:
     """Составить сообщение и поставить в очередь; канал и текст фиксируются.
 

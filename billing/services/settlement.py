@@ -11,8 +11,12 @@
 from decimal import Decimal
 
 from django.db.models import F
+from django.utils import timezone
 
-from ..models import Settlement
+from bus import publish
+from modules.billing.events import InvoiceSettled
+
+from ..models import MonthlyStatement, Settlement
 
 CONFIRMED = "modules.payments.events.PaymentConfirmed"
 VOIDED = "modules.payments.events.PaymentVoided"
@@ -20,6 +24,22 @@ VOIDED = "modules.payments.events.PaymentVoided"
 
 def apply_confirmed(event) -> None:
     _add(event.statement_id, event.amount)
+    _announce_if_settled(event.statement_id)
+
+
+def _announce_if_settled(statement_id: int) -> None:
+    """`InvoiceSettled` — когда признанное впервые покрыло итог.
+
+    Сверка — единственная, кто знает момент погашения; событие ведёт к
+    сообщению жильцу (F3) и однажды к Analytics.
+    """
+    statement = MonthlyStatement.objects.filter(pk=statement_id).first()
+    if statement is None or statement.status != MonthlyStatement.PAID:
+        return
+    publish(InvoiceSettled(
+        invoice_id=statement.pk, tenancy_id=statement.tenancy_id,
+        property_id=statement.apartment_id, period=statement.period,
+        total=statement.total, at=timezone.now()))
 
 
 def apply_voided(event) -> None:

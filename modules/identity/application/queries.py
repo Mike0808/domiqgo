@@ -10,6 +10,10 @@ def get_account(registry: AccountRegistry, account_id: int) -> Account:
     return registry.load_account(account_id)
 
 
+def list_owner_accounts(registry) -> list[int]:
+    return registry.list_owner_accounts()
+
+
 def has_current_consent(repository: ConsentRepository, account_id: int,
                         policy_version: str) -> bool:
     return repository.load_journal(account_id).covers(policy_version)

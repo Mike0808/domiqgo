@@ -27,3 +27,19 @@ class InvoiceIssued:
     total: Decimal
     due_date: date
     at: datetime
+
+
+@dataclass(frozen=True)
+class InvoiceSettled:
+    """Признанная оплата достигла итога: счёт погашен.
+
+    Публикует сверка (легаси-слой до расформирования `billing/`).
+    P1: Notifications (жильцу) ✔ F3. P2+: Analytics (доходность).
+    """
+
+    invoice_id: int
+    tenancy_id: int | None
+    property_id: int
+    period: date
+    total: Decimal
+    at: datetime

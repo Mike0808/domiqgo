@@ -98,3 +98,22 @@ def set_suspended(account_id: int, suspended: bool) -> None:
     from django.contrib.auth import get_user_model
 
     get_user_model().objects.filter(pk=account_id).update(is_active=not suspended)
+
+
+def list_owner_accounts() -> list[int]:
+    """Действующие учётные записи владельцев: реестр плюс мост от флага.
+
+    Запись реестра важнее флага (C4e); приостановленные не в счёт.
+    """
+    from django.contrib.auth import get_user_model
+
+    users = dict(get_user_model().objects.filter(is_active=True)
+                 .values_list("pk", "is_staff"))
+    typed = {row.account_id: row.type
+             for row in models.Account.objects.filter(account_id__in=users)}
+    owners = []
+    for account_id, is_staff in users.items():
+        declared = typed.get(account_id)
+        if declared == "owner" or (declared is None and is_staff):
+            owners.append(account_id)
+    return sorted(owners)
