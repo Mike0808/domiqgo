@@ -8,10 +8,12 @@
 from .base import IncomingMessage, MessengerAdapter
 
 
-def transport_for(platform: str) -> MessengerAdapter:
+def transport_for(platform: str):
     """Адаптер по имени платформы — для прогона отправки."""
+    from .email import EmailTransport
     from .max import MaxAdapter
     from .telegram import TelegramAdapter
 
-    adapters = {"telegram": TelegramAdapter, "max": MaxAdapter}
+    adapters = {"telegram": TelegramAdapter, "max": MaxAdapter,
+                "email": EmailTransport}
     return adapters[platform]()

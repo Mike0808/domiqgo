@@ -247,6 +247,17 @@ if not DEBUG:
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 
+# Почтовый канал уведомлений (шаг F4, ADR-0018). До этого шага в проекте не
+# было ни одной настройки EMAIL_*; бэкенд по умолчанию — SMTP, в тестах
+# Django сам подменяет его на locmem.
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "1") == "1"
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@domiq-ufa.ru")
+EMAIL_SUBJECT = os.environ.get("EMAIL_SUBJECT", "Domiq — уведомление")
+
 # OAuth login (Yandex ID / VK ID / Gosuslugi) — additive to password login.
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",

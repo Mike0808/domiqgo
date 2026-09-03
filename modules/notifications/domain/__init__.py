@@ -6,14 +6,14 @@
 Общего инварианта между ними нет — потому и два корня.
 """
 
-from .channel import AddressAlreadyBound, Channel
+from .channel import DELIVERY_PRIORITY, AddressAlreadyBound, Channel, preferred
 from .message import (
     CANCELLED, FAILED, MAX_ATTEMPTS, QUEUED, SENT,
     AlreadySent, NotFailed, NotQueued, OutgoingMessage,
 )
 
 __all__ = [
-    "AddressAlreadyBound", "Channel",
+    "AddressAlreadyBound", "Channel", "DELIVERY_PRIORITY", "preferred",
     "OutgoingMessage", "AlreadySent", "NotFailed", "NotQueued",
     "MAX_ATTEMPTS", "QUEUED", "SENT", "FAILED", "CANCELLED",
 ]

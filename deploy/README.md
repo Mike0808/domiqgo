@@ -13,6 +13,13 @@ Internet ──▶ caddy container (:80/:443, auto Let's Encrypt)
 WireGuard itself (51820/udp) stays published directly by the wg-easy container.
 ```
 
+## Email channel (stage F4)
+
+Письма уходят через SMTP: заполните `EMAIL_HOST`, `EMAIL_HOST_USER`,
+`EMAIL_HOST_PASSWORD` (и при необходимости `EMAIL_PORT`, `EMAIL_USE_TLS`,
+`DEFAULT_FROM_EMAIL`) в `.env`. Пустой `EMAIL_HOST` — письма не уходят, и
+очередь честно покажет «не доставлено».
+
 ## Notifications dispatch (stage F2)
 
 Уведомления копятся в очереди; доставляет их прогон. Раз в несколько минут:

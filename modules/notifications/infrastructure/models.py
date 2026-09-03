@@ -15,7 +15,7 @@ class Channel(models.Model):
 
     account_id = models.PositiveIntegerField("Учётная запись", db_index=True)
     platform = models.CharField("Платформа", max_length=10)
-    address = models.CharField("Адрес", max_length=64)
+    address = models.CharField("Адрес", max_length=254)   # хватает и почте
 
     class Meta:
         db_table = "notifications_channel"
@@ -44,7 +44,7 @@ class OutgoingMessage(models.Model):
 
     account_id = models.PositiveIntegerField("Получатель", db_index=True)
     platform = models.CharField("Платформа", max_length=10)
-    address = models.CharField("Адрес", max_length=64)
+    address = models.CharField("Адрес", max_length=254)   # снимок канала
     text = models.TextField("Текст")
     state = models.CharField("Состояние", max_length=10, choices=STATES,
                              default="queued", db_index=True)

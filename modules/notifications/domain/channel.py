@@ -6,6 +6,18 @@
 
 from dataclasses import dataclass
 
+#: Куда слать, когда каналов несколько: мессенджер доходит быстрее письма.
+#: Порядок — правило домена, а не случайность сортировки.
+DELIVERY_PRIORITY = ("telegram", "max", "email")
+
+
+def preferred(channels):
+    """Канал для доставки — первый по предпочтению платформ."""
+    ranked = sorted(channels, key=lambda c: (
+        DELIVERY_PRIORITY.index(c.platform)
+        if c.platform in DELIVERY_PRIORITY else len(DELIVERY_PRIORITY)))
+    return ranked[0] if ranked else None
+
 
 class AddressAlreadyBound(ValueError):
     """Один адрес не привязан к двум учётным записям (инвариант 2): чат — не

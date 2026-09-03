@@ -9,10 +9,63 @@
 from datetime import timedelta
 
 from django.contrib import admin, messages
+from django.core.exceptions import ValidationError
+from django.forms import ModelForm
 from django.utils import timezone
 
 from .. import api
-from .models import DispatchRun, OutgoingMessage
+from .models import Channel, DispatchRun, OutgoingMessage
+
+
+class ChannelCommandForm(ModelForm):
+    class Meta:
+        model = Channel
+        fields = "__all__"
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.errors:
+            return cleaned
+        # Отказ команды — ошибка формы, а не страница 500 (приём D1d): чужой
+        # адрес не перепривязывается молча (инвариант 2).
+        existing = Channel.objects.filter(platform=cleaned["platform"],
+                                          address=cleaned["address"]).first()
+        if existing is not None and existing.account_id != cleaned["account_id"]:
+            raise ValidationError(
+                "Этот адрес уже привязан к другой учётной записи — сначала "
+                "отвяжите его там.")
+        return cleaned
+
+
+@admin.register(Channel)
+class ChannelAdmin(admin.ModelAdmin):
+    """Каналы доставки. Мессенджер жилец привязывает сам кодом через бота;
+    почту (шаг F4) заводит владелец здесь — адрес учётной записи Identity
+    служит лишь подсказкой (ADR-0018), доставка на него не смотрит.
+
+    Правка запрещена: адрес меняют перепривязкой, чтобы отказ «чужой адрес»
+    не обходился формой.
+    """
+
+    form = ChannelCommandForm
+    list_display = ("account_id", "platform", "address")
+    list_filter = ("platform",)
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        api.bind_channel(obj.account_id, obj.platform, obj.address)
+        obj.pk = Channel.objects.get(account_id=obj.account_id,
+                                     platform=obj.platform).pk
+        obj.refresh_from_db()
+
+    def delete_model(self, request, obj):
+        api.unbind_channel(obj.account_id, obj.platform)
+
+    def delete_queryset(self, request, queryset):
+        for obj in queryset:
+            api.unbind_channel(obj.account_id, obj.platform)
 
 
 @admin.register(OutgoingMessage)

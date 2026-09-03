@@ -38,12 +38,12 @@ def enqueue_message(registry: ChannelRegistry, outbox, account_id: int,
     Отправкой занимается прогон, не постановка: слать в обработчике события
     значило бы держать транзакцию издателя на время разговора с Telegram.
     """
+    from ..domain.channel import preferred
     from ..domain.message import OutgoingMessage
 
-    channels = registry.list_for(account_id)
-    if not channels:
+    channel = preferred(registry.list_for(account_id))
+    if channel is None:
         return None
-    channel = channels[0]
     return outbox.add(OutgoingMessage(
         message_id=None, account_id=account_id, platform=channel.platform,
         address=channel.address, text=text))
