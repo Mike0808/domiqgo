@@ -62,3 +62,19 @@ def test_rebuild_restores_a_tampered_projection_from_the_journal():
     assert rebuild_settlement(stmt.pk) == Decimal("21500")
     assert settlement_matches_journal(stmt.pk)
     assert stmt.status == MonthlyStatement.PAID
+
+
+def test_a_voided_payment_leaves_the_projection_and_the_journal_agrees():
+    """PaymentVoided изымает сумму; журнал хранит обе записи (E5)."""
+    from billing.models import Payment
+    from billing.services.intake import void_payment
+
+    stmt = _statement()
+    record_payment(stmt, Decimal("21500"))
+    assert stmt.status == MonthlyStatement.PAID
+
+    void_payment(Payment.objects.get(), "ошибка")
+
+    assert stmt.settled_total == Decimal("0")
+    assert stmt.status == MonthlyStatement.UNPAID
+    assert settlement_matches_journal(stmt.pk)

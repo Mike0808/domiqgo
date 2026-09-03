@@ -6,13 +6,15 @@
 переедет в модуль при расформировании `billing/`.
 """
 
+from decimal import Decimal
+
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
 from bus import publish
 from modules.payments.events import (
-    PaymentConfirmed, PaymentRejected, PaymentSubmitted,
+    PaymentConfirmed, PaymentRejected, PaymentSubmitted, PaymentVoided,
 )
 
 from ..models import MonthlyStatement, Payment, Settlement
@@ -25,6 +27,16 @@ class NoUnpaidStatementError(Exception):
 class InvoiceNotIssued(Exception):
     """Платёж относится к выставленному счёту: черновик — ещё не документ,
     по нему не платят (шаг E4)."""
+
+
+class OnlyConfirmedIsVoided(Exception):
+    """Отменить можно только подтверждённый платёж (инв. 4): у заявленного
+    и отклонённого нет суммы в сверке — изымать нечего, их отклоняют."""
+
+
+class VoidReasonRequired(Exception):
+    """Отмена признанного платежа без причины — это удаление под другим
+    именем: причина обязательна (спецификация Payments)."""
 
 
 class PositiveAmountRequired(Exception):
@@ -122,3 +134,28 @@ def reject_payment(payment, note=""):
     publish(PaymentRejected(payment_id=payment.pk,
                             statement_id=payment.statement_id,
                             reason=note, at=timezone.now()))
+
+
+@transaction.atomic
+def void_payment(payment, reason):
+    """Отменить ранее подтверждённый платёж (шаг E5, дефект №16).
+
+    Платёж — свершившийся факт: его не удаляют. Запись и чек остаются,
+    причина фиксируется в примечании, сумма изымается из сверки событием —
+    жилец, заплативший наличными без чека, не останется без следа платежа
+    при споре «а я платил».
+    """
+    if payment.status != Payment.CONFIRMED:
+        raise OnlyConfirmedIsVoided(
+            f"Платёж в состоянии «{payment.get_status_display()}» не "
+            "отменяется — отклоните его.")
+    if not (reason or "").strip():
+        raise VoidReasonRequired("Укажите причину отмены.")
+    payment.status = Payment.VOIDED
+    payment.note = (f"{payment.note}; отменён: {reason}" if payment.note
+                    else f"отменён: {reason}")
+    payment.save(update_fields=["status", "note"])
+    publish(PaymentVoided(
+        payment_id=payment.pk, statement_id=payment.statement_id,
+        amount=payment.amount if payment.amount is not None else Decimal("0"),
+        reason=reason, at=timezone.now()))

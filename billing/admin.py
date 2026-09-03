@@ -19,7 +19,8 @@ from .models import (
 )
 from .services.statements import generate_statement, missing_meters
 from .services.intake import (
-    PositiveAmountRequired, confirm_payment, record_payment, reject_payment,
+    OnlyConfirmedIsVoided, PositiveAmountRequired, VoidReasonRequired,
+    confirm_payment, record_payment, reject_payment, void_payment,
 )
 from .services.issuing import issue_invoice
 from .services.settlement import rebuild_settlement, settlement_matches_journal
@@ -344,7 +345,7 @@ class PaymentAdmin(admin.ModelAdmin):
     list_filter = ("status", "source")
     date_hierarchy = "submitted_at"
     readonly_fields = ("preview", "submitted_at")
-    actions = [confirm_payments, reject_payments]
+    actions = [confirm_payments, reject_payments, "void_payments"]
 
     def get_fields(self, request, obj=None):
         if obj is None:
@@ -374,18 +375,26 @@ class PaymentAdmin(admin.ModelAdmin):
         return format_html(
             '<a href="{}" target="_blank"><img src="{}" style="max-height:120px"></a>', url, url)
 
-    def _delete_with_file(self, payment):
-        # Статуса-поля больше нет — откатывать нечего: сверка вычисляется.
-        # Само удаление уступит место VoidPayment на шаге E5.
-        payment.file.delete(save=False)
-        payment.delete()
+    def has_delete_permission(self, request, obj=None):
+        # Платёж — свершившийся факт: его не удаляют (инв. 5, шаг E5).
+        # Ошибочно принятый — отменяется, незнакомый — отклоняется.
+        return False
 
-    def delete_model(self, request, obj):
-        self._delete_with_file(obj)
-
-    def delete_queryset(self, request, queryset):
-        for obj in queryset:
-            self._delete_with_file(obj)
+    @admin.action(description="Отменить платёж (причина — из примечания)")
+    def void_payments(self, request, queryset):
+        """`VoidPayment`: причина берётся из примечания платежа — впишите
+        её в форме и выберите действие. Отмена изымает сумму из сверки
+        событием; запись и чек остаются."""
+        voided = 0
+        for payment in queryset:
+            try:
+                void_payment(payment, payment.note)
+                voided += 1
+            except (OnlyConfirmedIsVoided, VoidReasonRequired) as exc:
+                self.message_user(request, f"Платёж #{payment.pk}: {exc}",
+                                  level=messages.ERROR)
+        if voided:
+            self.message_user(request, f"Отменено платежей: {voided}.")
 
 class PaymentInline(admin.TabularInline):
     model = Payment

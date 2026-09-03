@@ -90,24 +90,31 @@ def test_invoice_status_is_a_stored_field_answerable_to_nothing():
 
 
 # --------------------------------------------------------------------------
-# №16 — удаление платежа. Переписывает шаг E5.
+# №16 — платёж не удаляется: его отменяют. Исправлен шагом E5.
 # --------------------------------------------------------------------------
 
-def test_deleting_a_payment_erases_the_record_and_the_file(media_isolation):
-    """Удаление в админке не оставляет следа ни в базе, ни на диске.
+def test_a_payment_is_voided_with_a_trace_not_deleted(media_isolation):
+    """№16 исправлен (E5): запись и файл остаются, причина фиксируется,
+    сумма изымается из сверки — история не рвётся."""
+    from billing.services.intake import confirm_payment, void_payment
 
-    После E5 вместо удаления — отмена: запись и файл остаются, причина
-    фиксируется, история сверки не рвётся.
-    """
     tenant, invoice = _tenant_with_unpaid_invoice()
     payment = attach_receipt(tenant, ContentFile(b"img", name="r.jpg"),
                              source=Payment.TELEGRAM)
     path = payment.file.path
-    assert os.path.exists(path)
-
-    _landlord_client().post(f"/admin/billing/payment/{payment.pk}/delete/", {"post": "yes"})
-
-    assert not Payment.objects.exists()
-    assert not os.path.exists(path)
+    confirm_payment(payment, invoice.total)
     invoice.refresh_from_db()
-    assert invoice.status == MonthlyStatement.UNPAID   # и статус счёта отыгран назад
+    assert invoice.status == MonthlyStatement.PAID
+
+    resp = _landlord_client().post(
+        f"/admin/billing/payment/{payment.pk}/delete/", {"post": "yes"})
+    assert resp.status_code == 403               # операции удаления нет
+
+    void_payment(payment, "не тот счёт")
+
+    payment.refresh_from_db()
+    assert payment.status == Payment.VOIDED
+    assert "не тот счёт" in payment.note
+    assert os.path.exists(path)                  # чек цел
+    invoice.refresh_from_db()
+    assert invoice.status == MonthlyStatement.UNPAID   # сумма изъята сверкой

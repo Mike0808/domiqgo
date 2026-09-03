@@ -192,8 +192,13 @@ class Payment(models.Model):
     SOURCE_CHOICES = [(TELEGRAM, "Telegram"), (MAX, "MAX"), (WEB, "Веб"),
                       (MANUAL, "Вручную")]
     PENDING = "pending"; CONFIRMED = "confirmed"; REJECTED = "rejected"
+    VOIDED = "voided"
+    #: «Отменён» — не то же, что «отклонён»: отклоняют незнакомца, чья сумма
+    #: в сверке не участвовала; отменяют признанный платёж, и его сумма
+    #: изымается из сверки (шаг E5, дефект №16).
     STATUS_CHOICES = [
-        (PENDING, "На проверке"), (CONFIRMED, "Подтверждён"), (REJECTED, "Отклонён"),
+        (PENDING, "На проверке"), (CONFIRMED, "Подтверждён"),
+        (REJECTED, "Отклонён"), (VOIDED, "Отменён"),
     ]
 
     statement = models.ForeignKey(MonthlyStatement, on_delete=models.CASCADE,

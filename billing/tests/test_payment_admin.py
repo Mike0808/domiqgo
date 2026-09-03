@@ -70,25 +70,46 @@ def test_reject_action_reverts_to_unpaid(admin_client, media_isolation):
     assert p.status == Payment.REJECTED
     assert p.statement.status == MonthlyStatement.UNPAID
 
-def test_delete_payment_removes_file_and_reverts_status(admin_client, media_isolation):
+def test_a_payment_cannot_be_deleted_from_the_admin(admin_client, media_isolation):
+    """Платёж — свершившийся факт (инв. 5, шаг E5): операции удаления нет."""
     import os
     p = _pending_payment()
     path = p.file.path
-    assert os.path.exists(path)
-    p.statement.refresh_from_db()
-    assert p.statement.status == MonthlyStatement.PENDING
-    # Django admin's single-object delete confirmation calls delete_model().
-    admin_client.post(f"/admin/billing/payment/{p.pk}/delete/", {"post": "yes"})
-    assert not Payment.objects.filter(pk=p.pk).exists()
-    assert not os.path.exists(path)
-    assert MonthlyStatement.objects.get().status == MonthlyStatement.UNPAID
 
-def test_delete_stray_pending_on_paid_statement_keeps_it_paid(admin_client, media_isolation):
-    from billing.tests.settle import settle
+    resp = admin_client.post(f"/admin/billing/payment/{p.pk}/delete/", {"post": "yes"})
+
+    assert resp.status_code == 403
+    assert Payment.objects.filter(pk=p.pk).exists()
+    assert os.path.exists(path)
+
+def test_voiding_the_confirming_payment_reopens_the_invoice(admin_client, media_isolation):
+    """Отмена изымает сумму из сверки: счёт снова не оплачен, а запись и чек
+    остаются — жильцу есть чем подкрепить «а я платил»."""
+    import os
+    from billing.services.intake import confirm_payment
     p = _pending_payment()
-    stmt = p.statement
-    settle(stmt)   # оплаченность вычисляется — фабрикуем сверку (E3)
-    admin_client.post(f"/admin/billing/payment/{p.pk}/delete/", {"post": "yes"})
-    assert not Payment.objects.filter(pk=p.pk).exists()
-    stmt.refresh_from_db()
-    assert stmt.status == MonthlyStatement.PAID
+    confirm_payment(p, Decimal("21500"))
+    assert p.statement.status == MonthlyStatement.PAID
+
+    p.note = "перевод вернулся"
+    p.save(update_fields=["note"])
+    resp = admin_client.post("/admin/billing/payment/", {
+        "action": "void_payments", "_selected_action": [str(p.pk)]}, follow=True)
+
+    assert resp.status_code == 200
+    p.refresh_from_db()
+    assert p.status == Payment.VOIDED
+    assert "отменён: перевод вернулся" in p.note
+    assert os.path.exists(p.file.path)
+    assert p.statement.status == MonthlyStatement.UNPAID
+
+
+def test_voiding_needs_a_reason_and_a_confirmed_payment(admin_client, media_isolation):
+    p = _pending_payment()   # заявленный, без причины в примечании
+
+    resp = admin_client.post("/admin/billing/payment/", {
+        "action": "void_payments", "_selected_action": [str(p.pk)]}, follow=True)
+
+    p.refresh_from_db()
+    assert p.status == Payment.PENDING           # не отменён
+    assert "не отменяется" in resp.content.decode()
