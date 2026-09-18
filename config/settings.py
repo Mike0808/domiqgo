@@ -62,6 +62,8 @@ INSTALLED_APPS = [
     "modules.tenancy.apps.TenancyConfig",
     # Этап F: доставка сообщений.
     "modules.notifications.apps.NotificationsConfig",
+    # Этап G: выгрузки.
+    "modules.reporting.apps.ReportingConfig",
 ]
 
 SITE_ID = 1
@@ -199,6 +201,7 @@ MIGRATION_MODULES = {
     "identity": "modules.identity.infrastructure.migrations",
     "tenancy": "modules.tenancy.infrastructure.migrations",
     "notifications": "modules.notifications.infrastructure.migrations",
+    "reporting": "modules.reporting.infrastructure.migrations",
 }
 
 
