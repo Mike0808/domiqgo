@@ -1,6 +1,7 @@
 {% extends "admin/change_list.html" %}
 {% block object-tools-items %}
   <li><a class="addlink" href="?run=registry">Реестр (XLSX)</a></li>
+  <li><a class="addlink" href="?run=full">Полная выгрузка (JSON)</a></li>
   <li>
     <form method="get" style="display:inline">
       <input type="hidden" name="run" value="financial">

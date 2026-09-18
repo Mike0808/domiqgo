@@ -15,7 +15,7 @@
 """
 
 from ..application import commands, queries
-from ..domain.export_run import Report, UnknownReport
+from ..domain.export_run import Report, ScopeViolation, UnknownReport, report
 
 
 def _journal():
@@ -24,6 +24,24 @@ def _journal():
     from ..infrastructure import repository
 
     return repository
+
+
+def wire(documents_meta) -> None:
+    """Внедрить `ListDocumentsMeta(tenancy_id)` (ADR-0022): модуля Documents
+    нет, его граница лишь зафиксирована — провайдера даёт интерфейсный слой,
+    как резолвер владельцев в Notifications."""
+    from ..application import reports
+
+    reports.wire(documents_meta)
+
+
+def content_type(report_code: str) -> str:
+    """MIME по формату отчёта — формат следует из назначения, не выбирается."""
+    return {
+        "xlsx": ("application/vnd.openxmlformats-officedocument"
+                 ".spreadsheetml.sheet"),
+        "json": "application/json",
+    }[report(report_code).format]
 
 
 def run_export(report_code: str, initiated_by: int,
@@ -43,5 +61,6 @@ def list_export_runs():
     return queries.list_export_runs(_journal())
 
 
-__all__ = ["Report", "UnknownReport",
-           "run_export", "list_available_reports", "list_export_runs"]
+__all__ = ["Report", "ScopeViolation", "UnknownReport",
+           "run_export", "list_available_reports", "list_export_runs",
+           "wire", "content_type"]

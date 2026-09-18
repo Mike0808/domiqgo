@@ -6,7 +6,7 @@
 того, кто проверял.
 """
 
-from ..domain.export_run import ExportRun, report
+from ..domain.export_run import ExportRun, ScopeViolation, report
 from .ports import RunJournal
 from .reports import build
 
@@ -20,6 +20,12 @@ def run_export(journal: RunJournal, report_code: str, initiated_by: int,
     заводится заранее.
     """
     entry = report(report_code)
+    if report_code == "my_data" and not isinstance(
+            (params or {}).get("account_id"), int):
+        # Инвариант 3 — до журнала: несогласованная область не «попытка
+        # выгрузки», а ошибка вызывающего.
+        raise ScopeViolation(
+            "«Мои данные» выгружаются для ровно одной учётной записи.")
     run = journal.open(ExportRun(run_id=None, report_code=report_code,
                                  initiated_by=initiated_by, scope=scope))
     try:

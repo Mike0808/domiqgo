@@ -20,11 +20,12 @@ def list_invoice_rows(period_from=None, period_to=None) -> list[dict]:
             where.append("period <= %s"); args.append(period_to)
         clause = f" WHERE {' AND '.join(where)}" if where else ""
         cursor.execute(
-            "SELECT apartment_id, tenancy_id, period, lines, total, issued_at,"
+            "SELECT id, apartment_id, tenancy_id, period, lines, total, issued_at,"
             " due_date FROM billing_monthlystatement" + clause +
             " ORDER BY period, id", args)
         return [{
-            "property_id": row[0], "tenancy_id": row[1], "period": row[2],
-            "lines": json.loads(row[3]) if isinstance(row[3], str) else row[3],
-            "total": row[4], "issued_at": row[5], "due_date": row[6],
+            "invoice_id": row[0],
+            "property_id": row[1], "tenancy_id": row[2], "period": row[3],
+            "lines": json.loads(row[4]) if isinstance(row[4], str) else row[4],
+            "total": row[5], "issued_at": row[6], "due_date": row[7],
         } for row in cursor.fetchall()]

@@ -20,6 +20,23 @@ class BillingConfig(AppConfig):
 
         subscribe(PaymentConfirmed, settlement.apply_confirmed)
         subscribe(PaymentVoided, settlement.apply_voided)
+        # Метаданные документов для выгрузок (ADR-0022): модуля Documents
+        # нет, файлы пока висят на профиле жильца — сшивает интерфейсный
+        # слой, которому видны обе стороны.
+        from modules.reporting import api as reporting
+        from modules.tenancy import api as tenancy_api
+
+        def _documents_meta(tenancy_id):
+            from .models import Document
+
+            contract = tenancy_api.get_tenancy(tenancy_id)
+            if contract is None:
+                return []
+            return [{"title": doc.title, "uploaded_at": doc.uploaded_at}
+                    for doc in Document.objects.filter(
+                        tenant__user_id=contract.account_id)]
+
+        reporting.wire(_documents_meta)
         # Уведомления подписываются здесь же (F3): резолвер владельцев —
         # Identity, а Notifications его вызывать не вправе (матрица §2);
         # сшивает тот, кому видны оба, — интерфейсный слой.

@@ -1,6 +1,10 @@
 {% extends "billing/base.html" %}
 {% block title %}Мои документы{% endblock %}
 {% block content %}
+<p class="mb-4 text-right">
+  <a href="{% url 'my_data_export' %}"
+     class="text-sm text-accent underline hover:text-ink">Скачать «Мои данные» (JSON)</a>
+</p>
 <h1 class="mb-6 text-3xl font-bold">Документы</h1>
 {% for d in documents %}
 <a href="{{ d.file.url }}" hx-boost="false" download

@@ -5,10 +5,11 @@
 
 from .export_run import (
     CATALOGUE, FAILED, STARTED, SUCCEEDED,
-    ExportRun, Report, UnknownReport, available_for, report,
+    ExportRun, Report, ScopeViolation, UnknownReport, available_for, report,
 )
 
 __all__ = [
     "CATALOGUE", "STARTED", "SUCCEEDED", "FAILED",
-    "ExportRun", "Report", "UnknownReport", "available_for", "report",
+    "ExportRun", "Report", "ScopeViolation", "UnknownReport",
+    "available_for", "report",
 ]

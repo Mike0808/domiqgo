@@ -13,10 +13,6 @@ from django.http import HttpResponse
 from .. import api
 from .models import ExportRun
 
-XLSX_TYPE = ("application/vnd.openxmlformats-officedocument"
-             ".spreadsheetml.sheet")
-
-
 @admin.register(ExportRun)
 class ExportRunAdmin(admin.ModelAdmin):
     list_display = ("started_at", "report_code", "initiated_by", "scope",
@@ -50,7 +46,8 @@ class ExportRunAdmin(admin.ModelAdmin):
                 scope = "период " + "..".join(bounds)
             filename, payload = api.run_export(code, request.user.pk,
                                                scope=scope, params=params)
-            response = HttpResponse(payload, content_type=XLSX_TYPE)
+            response = HttpResponse(payload,
+                                    content_type=api.content_type(code))
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
             return response
         return super().changelist_view(request, extra_context)

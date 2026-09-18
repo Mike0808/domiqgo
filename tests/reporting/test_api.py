@@ -109,5 +109,5 @@ def test_an_unknown_report_is_refused_before_the_journal():
 
 def test_the_available_reports_split_by_audience():
     codes = [r.code for r in api.list_available_reports("owner")]
-    assert codes == ["financial", "registry"]
-    assert api.list_available_reports("tenant") == []   # JSON-пара — шаг G2
+    assert codes == ["financial", "registry", "full"]
+    assert [r.code for r in api.list_available_reports("tenant")] == ["my_data"]

@@ -17,4 +17,10 @@ def list_confirmed_payments(period_from=None, period_to=None) -> list[dict]:
     return _repository().list_confirmed_payments(period_from, period_to)
 
 
-__all__ = ["list_confirmed_payments"]
+def list_payments(statement_ids=None) -> list[dict]:
+    """Вся история платежей — включая заявленные, отклонённые и отменённые:
+    полная выгрузка неполна без них (шаг G2)."""
+    return _repository().list_payments(statement_ids)
+
+
+__all__ = ["list_confirmed_payments", "list_payments"]

@@ -2,7 +2,7 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db import transaction
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.static import serve
@@ -171,6 +171,27 @@ def oauth_connections(request):
     # а не здесь (шаг C4d).
     return render(request, "billing/oauth_connections.html",
                   {"connected_provider_ids": identity.list_linked_providers(request.user.pk)})
+
+@login_required
+def my_data_export(request):
+    """«Мои данные» (152-ФЗ): жилец скачивает всё своё одним файлом.
+
+    Право проверяется здесь, в прикладном слое (ADR-0023): область — только
+    собственная учётная запись, и подставить чужую в параметры неоткуда.
+    """
+    closed = _cabinet_gate(request)
+    if closed is not None:
+        return closed
+    from modules.reporting import api as reporting
+
+    filename, payload = reporting.run_export(
+        "my_data", initiated_by=request.user.pk,
+        scope=f"учётная запись #{request.user.pk}",
+        params={"account_id": request.user.pk})
+    response = HttpResponse(payload, content_type=reporting.content_type("my_data"))
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
 
 def privacy_policy(request):
     return render(request, "billing/privacy_policy.html", {"policy_version": PRIVACY_POLICY_VERSION})

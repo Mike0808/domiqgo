@@ -59,6 +59,13 @@ def get_expected_meters(apartment_id: int) -> list:
     return queries.expected_meters(_repository(), apartment_id)
 
 
+def list_readings(apartment_id: int) -> list[dict]:
+    """Вся история показаний квартиры — для полной выгрузки (шаг G2)."""
+    from .infrastructure_read import list_readings as _list
+
+    return _list(apartment_id)
+
+
 def get_readings(apartment_id: int, period: date) -> dict[str, Decimal]:
     """Уже внесённые за период значения: код ресурса → показание."""
     return queries.readings(_repository(), apartment_id, period)

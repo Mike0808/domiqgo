@@ -24,12 +24,18 @@ class Report:
     audience: str        # "owner" | "tenant"
 
 
-#: Четыре отчёта P1. JSON-пара приходит шагом G2 — до тех пор их нет и в
-#: перечне доступного: отчёт, который нельзя выполнить, не предлагается.
+#: Четыре отчёта P1 — все на месте с шага G2.
 CATALOGUE = (
     Report("financial", "Финансовый за период", "xlsx", "owner"),
     Report("registry", "Реестр", "xlsx", "owner"),
+    Report("full", "Полная выгрузка", "json", "owner"),
+    Report("my_data", "Мои данные", "json", "tenant"),
 )
+
+
+class ScopeViolation(ValueError):
+    """Область выгрузки не согласована: «Мои данные» обязаны иметь ровно
+    одну учётную запись (инвариант 3)."""
 
 
 def report(code: str) -> Report:
