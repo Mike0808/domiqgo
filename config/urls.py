@@ -25,8 +25,8 @@ from allauth.socialaccount import providers
 # bundles allauth's local-account signup/login views, defeating "no
 # self-registration"). This mirrors allauth.urls's own
 # build_provider_urlpatterns(): walk the registry so every REGISTERED
-# provider (Yandex, VK, and Gosuslugi once billing.esia_provider registers
-# it) gets its routes with no urls.py edit required per provider.
+# provider (Yandex, VK, and Gosuslugi once the esia_provider app registers
+# it via Identity infrastructure) gets its routes with no urls.py edit.
 def _provider_urlpatterns():
     patterns = []
     for provider_class in providers.registry.get_class_list():

@@ -1,7 +1,9 @@
 import base64
 import json
-from billing.esia_provider.provider import ESIAProvider
-from billing.esia_provider.views import ESIAOAuth2Adapter, _decode_id_token_payload
+from modules.identity.infrastructure.esia_provider.provider import ESIAProvider
+from modules.identity.infrastructure.esia_provider.views import (
+    ESIAOAuth2Adapter, _decode_id_token_payload,
+)
 
 def test_esia_provider_registered_with_id():
     assert ESIAProvider.id == "esia"

@@ -48,7 +48,7 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.yandex",
     "allauth.socialaccount.providers.vk",
     "billing",
-    "billing.esia_provider",
+    "modules.identity.infrastructure.esia_provider",
     # Шина событий (ADR-0027). Приложение — только ради журнала публикаций
     # (шаг B2); транспорту база не нужна.
     "bus",
@@ -308,14 +308,14 @@ SOCIALACCOUNT_PROVIDERS = {
 ESIA_BASE_URL = os.environ.get("ESIA_BASE_URL", "https://esia-portal1.test.gosuslugi.ru")
 ESIA_ALLOW_UNVERIFIED_SIGNATURE = os.environ.get("ESIA_ALLOW_UNVERIFIED_SIGNATURE", "0") == "1"
 
-# billing/esia_provider decodes the ESIA id_token WITHOUT verifying its
+# esia_provider (Identity infrastructure) decodes the ESIA id_token WITHOUT verifying its
 # cryptographic signature (no verification certificate until real ESIA
 # accreditation). Refuse to boot against production Gosuslugi with that gap
 # open unless the deployer has explicitly acknowledged the risk.
 if not DEBUG and "esia-portal1.test" not in ESIA_BASE_URL and not ESIA_ALLOW_UNVERIFIED_SIGNATURE:
     raise ImproperlyConfigured(
         "ESIA_BASE_URL points at production Gosuslugi but id_token signature "
-        "verification is not implemented (see billing/esia_provider/views.py). "
+        "verification is not implemented (see modules/identity/infrastructure/esia_provider/views.py). "
         "Set ESIA_ALLOW_UNVERIFIED_SIGNATURE=1 only after you have reviewed "
         "and accepted this risk, or keep ESIA_BASE_URL pointed at the sandbox."
     )
