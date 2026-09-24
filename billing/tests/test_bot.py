@@ -61,7 +61,8 @@ def test_photo_from_linked_tenant_attaches_receipt(media_isolation):
     reply = process_message(adapter, _msg(file_id="photo123"))
     assert "на проверку" in reply.lower()
     payment = Payment.objects.get()
-    assert payment.statement.status == MonthlyStatement.PENDING
+    stmt = MonthlyStatement.objects.get(pk=payment.statement_id)
+    assert stmt.status == MonthlyStatement.PENDING
     assert payment.file.read() == b"receipt-bytes"
     assert payment.source == "telegram"
 

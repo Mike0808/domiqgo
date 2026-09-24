@@ -8,6 +8,15 @@ from django.db import models
 # `modules.properties.api`.
 from modules.properties.infrastructure.models import Apartment
 
+# Платёж принадлежит Payments (шаг H2). Таблица переименована в
+# `payments_payment`, команды — `modules.payments.api`. Реэкспорт модели —
+# для интерфейсного слоя (админка, тесты), как `Apartment` выше;
+# `receipt_upload_path` — для исторических миграций, которые помнят её
+# по этому адресу.
+from modules.payments.infrastructure.models import (  # noqa: F401
+    Payment, receipt_upload_path,
+)
+
 # `Apartment` уехал в `modules/properties/` шагом C3b: домен, публичный API,
 # события. Таблица переименована в `properties_apartment`. Читать объект
 # отсюда следует через `modules.properties.api`; два внешних ключа на него
@@ -109,7 +118,8 @@ class MonthlyStatement(models.Model):
         settled = self.settled_total
         if settled > 0 and settled >= self.total:
             return self.PAID
-        if self.payments.filter(status=Payment.PENDING).exists():
+        if Payment.objects.filter(statement_id=self.pk,
+                                  status=Payment.PENDING).exists():
             return self.PENDING
         return self.UNPAID
 
@@ -180,43 +190,7 @@ class Document(models.Model):
     def __str__(self):
         return self.title
 
-def receipt_upload_path(instance, filename):
-    return f"receipts/statement_{instance.statement_id}/{filename}"
-
-class Payment(models.Model):
-    TELEGRAM = "telegram"; MAX = "max"; WEB = "web"; MANUAL = "manual"
-    SOURCE_CHOICES = [(TELEGRAM, "Telegram"), (MAX, "MAX"), (WEB, "Веб"),
-                      (MANUAL, "Вручную")]
-    PENDING = "pending"; CONFIRMED = "confirmed"; REJECTED = "rejected"
-    VOIDED = "voided"
-    #: «Отменён» — не то же, что «отклонён»: отклоняют незнакомца, чья сумма
-    #: в сверке не участвовала; отменяют признанный платёж, и его сумма
-    #: изымается из сверки (шаг E5, дефект №16).
-    STATUS_CHOICES = [
-        (PENDING, "На проверке"), (CONFIRMED, "Подтверждён"),
-        (REJECTED, "Отклонён"), (VOIDED, "Отменён"),
-    ]
-
-    statement = models.ForeignKey(MonthlyStatement, on_delete=models.CASCADE,
-                                  related_name="payments")
-    #: Чек необязателен (шаг E1): владелец отмечает наличную оплату вручную,
-    #: не прося фотографию ради формальности.
-    file = models.FileField("Чек", upload_to=receipt_upload_path, blank=True)
-    #: Подтверждённая сумма. Есть только у подтверждённого платежа (инв. 2
-    #: спецификации Payments); у заявленного чека суммы ещё нет. Пусто у
-    #: платежей, подтверждённых до шага E1, — их суммы никто не называл, и
-    #: выдумать их нельзя; сверка этапа E3 попросит владельца их указать.
-    amount = models.DecimalField("Сумма", max_digits=12, decimal_places=2,
-                                 null=True, blank=True)
-    source = models.CharField("Источник", max_length=10, choices=SOURCE_CHOICES)
-    status = models.CharField("Статус", max_length=10, choices=STATUS_CHOICES, default=PENDING)
-    note = models.CharField("Примечание", max_length=300, blank=True)
-    submitted_at = models.DateTimeField("Получен", auto_now_add=True)
-
-    class Meta:
-        verbose_name = "Платёж"
-        verbose_name_plural = "Платежи"
-        ordering = ["-submitted_at"]
-
-    def __str__(self):
-        return f"Платёж {self.statement} ({self.get_status_display()})"
+# `Payment` уехал в `modules/payments/` шагом H2: домен, команды, события,
+# публикуемые из application/. Таблица переименована в `payments_payment`,
+# внешний ключ на счёт стал идентификатором (правило 1.3) — каскада от
+# удаления счёта больше нет, что домену впору: платёж не удаляется (инв. 5).

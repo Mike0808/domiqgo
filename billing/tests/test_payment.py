@@ -14,10 +14,11 @@ def _stmt():
     return MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1))
 
 def test_payment_defaults_to_pending(media_isolation):
-    p = Payment(statement=_stmt(), source=Payment.TELEGRAM)
+    stmt = _stmt()
+    p = Payment(statement_id=stmt.pk, source=Payment.TELEGRAM)
     p.file.save("r.jpg", ContentFile(b"img"), save=True)
     assert p.status == Payment.PENDING
-    assert p.statement.payments.count() == 1
+    assert Payment.objects.filter(statement_id=stmt.pk).count() == 1
 
 def test_payment_source_choices_cover_all_channels():
     codes = {c for c, _ in Payment.SOURCE_CHOICES}

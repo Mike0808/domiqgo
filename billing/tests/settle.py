@@ -34,8 +34,8 @@ def issue(statement):
 
 def pend(statement):
     """По счёту есть заявленный платёж — «на проверке»."""
-    return Payment.objects.create(statement=statement, source=Payment.WEB,
-                                  status=Payment.PENDING)
+    return Payment.objects.create(statement_id=statement.pk,
+                                  source=Payment.WEB, status=Payment.PENDING)
 
 
 def wire():

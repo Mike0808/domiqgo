@@ -60,6 +60,8 @@ INSTALLED_APPS = [
     "modules.identity.apps.IdentityConfig",
     # Этап D: первый не-лист графа — зависит от Identity и Properties.
     "modules.tenancy.apps.TenancyConfig",
+    # Этап H2: платёжный контур — таблица и команды платежа.
+    "modules.payments.apps.PaymentsConfig",
     # Этап F: доставка сообщений.
     "modules.notifications.apps.NotificationsConfig",
     # Этап G: выгрузки.
@@ -200,6 +202,7 @@ MIGRATION_MODULES = {
     "properties": "modules.properties.infrastructure.migrations",
     "identity": "modules.identity.infrastructure.migrations",
     "tenancy": "modules.tenancy.infrastructure.migrations",
+    "payments": "modules.payments.infrastructure.migrations",
     "notifications": "modules.notifications.infrastructure.migrations",
     "reporting": "modules.reporting.infrastructure.migrations",
 }

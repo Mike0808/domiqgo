@@ -20,6 +20,10 @@ def admin_client():
 def media_isolation(settings, tmp_path):
     settings.MEDIA_ROOT = tmp_path
 
+def _stmt_of(payment):
+    """Счёт платежа — явным запросом: FK стал идентификатором (шаг H2)."""
+    return MonthlyStatement.objects.get(pk=payment.statement_id)
+
 def _pending_payment():
     from billing.tests.tenancies import let_in
 
@@ -34,18 +38,18 @@ def _pending_payment():
 
 def test_payment_changelist_loads(admin_client, media_isolation):
     _pending_payment()
-    assert admin_client.get("/admin/billing/payment/").status_code == 200
+    assert admin_client.get("/admin/payments/payment/").status_code == 200
 
 def test_confirm_action_marks_paid_with_the_invoice_total(admin_client, media_isolation):
     """Обычный случай «пришло ровно столько, сколько выставлено»: сумма
     преднастроена итогом счёта — один клик (шаг E1)."""
     p = _pending_payment()
-    admin_client.post("/admin/billing/payment/", {
+    admin_client.post("/admin/payments/payment/", {
         "action": "confirm_payments", "_selected_action": [str(p.pk)]})
-    p.refresh_from_db(); p.statement.refresh_from_db()
+    p.refresh_from_db()
     assert p.status == Payment.CONFIRMED
     assert p.amount == Decimal("21500")
-    assert p.statement.status == MonthlyStatement.PAID
+    assert _stmt_of(p).status == MonthlyStatement.PAID
 
 
 def test_recording_a_manual_payment_from_the_admin(admin_client, media_isolation):
@@ -54,7 +58,7 @@ def test_recording_a_manual_payment_from_the_admin(admin_client, media_isolation
     from billing.tests.settle import issue
     stmt = issue(MonthlyStatement.objects.create(
         apartment=a, period=date(2026, 7, 1), total=Decimal("21500")))
-    resp = admin_client.post("/admin/billing/payment/add/", {
+    resp = admin_client.post("/admin/payments/payment/add/", {
         "statement": str(stmt.pk), "amount": "21500", "note": "наличными"})
     assert resp.status_code == 302
     stmt.refresh_from_db()
@@ -64,11 +68,11 @@ def test_recording_a_manual_payment_from_the_admin(admin_client, media_isolation
 
 def test_reject_action_reverts_to_unpaid(admin_client, media_isolation):
     p = _pending_payment()
-    admin_client.post("/admin/billing/payment/", {
+    admin_client.post("/admin/payments/payment/", {
         "action": "reject_payments", "_selected_action": [str(p.pk)]})
-    p.refresh_from_db(); p.statement.refresh_from_db()
+    p.refresh_from_db()
     assert p.status == Payment.REJECTED
-    assert p.statement.status == MonthlyStatement.UNPAID
+    assert _stmt_of(p).status == MonthlyStatement.UNPAID
 
 def test_a_payment_cannot_be_deleted_from_the_admin(admin_client, media_isolation):
     """Платёж — свершившийся факт (инв. 5, шаг E5): операции удаления нет."""
@@ -76,7 +80,7 @@ def test_a_payment_cannot_be_deleted_from_the_admin(admin_client, media_isolatio
     p = _pending_payment()
     path = p.file.path
 
-    resp = admin_client.post(f"/admin/billing/payment/{p.pk}/delete/", {"post": "yes"})
+    resp = admin_client.post(f"/admin/payments/payment/{p.pk}/delete/", {"post": "yes"})
 
     assert resp.status_code == 403
     assert Payment.objects.filter(pk=p.pk).exists()
@@ -89,11 +93,11 @@ def test_voiding_the_confirming_payment_reopens_the_invoice(admin_client, media_
     from billing.services.intake import confirm_payment
     p = _pending_payment()
     confirm_payment(p, Decimal("21500"))
-    assert p.statement.status == MonthlyStatement.PAID
+    assert _stmt_of(p).status == MonthlyStatement.PAID
 
     p.note = "перевод вернулся"
     p.save(update_fields=["note"])
-    resp = admin_client.post("/admin/billing/payment/", {
+    resp = admin_client.post("/admin/payments/payment/", {
         "action": "void_payments", "_selected_action": [str(p.pk)]}, follow=True)
 
     assert resp.status_code == 200
@@ -101,13 +105,13 @@ def test_voiding_the_confirming_payment_reopens_the_invoice(admin_client, media_
     assert p.status == Payment.VOIDED
     assert "отменён: перевод вернулся" in p.note
     assert os.path.exists(p.file.path)
-    assert p.statement.status == MonthlyStatement.UNPAID
+    assert _stmt_of(p).status == MonthlyStatement.UNPAID
 
 
 def test_voiding_needs_a_reason_and_a_confirmed_payment(admin_client, media_isolation):
     p = _pending_payment()   # заявленный, без причины в примечании
 
-    resp = admin_client.post("/admin/billing/payment/", {
+    resp = admin_client.post("/admin/payments/payment/", {
         "action": "void_payments", "_selected_action": [str(p.pk)]}, follow=True)
 
     p.refresh_from_db()

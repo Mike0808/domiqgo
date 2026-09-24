@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin
 from django.utils import timezone
 # Приборы и показания принадлежат Metering (шаг C2c), но их админка осталась
@@ -8,7 +9,8 @@ from django.utils import timezone
 # здесь. Регистрация показаний вдобавок пересчитывает счёт; это уйдёт на C2f,
 # когда Billing начнёт слушать событие.
 from django.contrib import messages
-from django.utils.html import format_html
+from django.urls import reverse
+from django.utils.html import format_html, format_html_join
 from modules.metering import api as metering
 from modules.properties import api as properties
 from modules.metering.infrastructure.models import (
@@ -320,13 +322,14 @@ def confirm_payments(modeladmin, request, queryset):
     в форме платежа перед подтверждением."""
     n = 0
     for p in queryset.filter(status=Payment.PENDING):
+        stmt = MonthlyStatement.objects.get(pk=p.statement_id)
         try:
-            confirm_payment(p, p.amount if p.amount else p.statement.total)
+            confirm_payment(p, p.amount if p.amount else stmt.total)
             n += 1
         except PositiveAmountRequired:
             modeladmin.message_user(
                 request,
-                f"Платёж по счёту «{p.statement}» не подтверждён: укажите "
+                f"Платёж по счёту «{stmt}» не подтверждён: укажите "
                 "сумму в форме платежа — итог счёта нулевой.",
                 level=messages.ERROR)
     modeladmin.message_user(request, f"Подтверждено платежей: {n}.")
@@ -338,21 +341,46 @@ def reject_payments(modeladmin, request, queryset):
         reject_payment(p); n += 1
     modeladmin.message_user(request, f"Отклонено платежей: {n}.", level=messages.WARNING)
 
+class RecordPaymentForm(forms.ModelForm):
+    """Форма ручной отметки: платёж больше не держит FK на счёт (шаг H2),
+    выбор счёта — поле формы, а не модели."""
+
+    statement = forms.ModelChoiceField(queryset=MonthlyStatement.objects.all(),
+                                       label="Начисление")
+
+    class Meta:
+        model = Payment
+        fields = ("amount", "note")
+
+
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ("statement", "source", "status", "amount", "submitted_at",
+    list_display = ("invoice", "source", "status", "amount", "submitted_at",
                     "preview")
     list_filter = ("status", "source")
     date_hierarchy = "submitted_at"
-    readonly_fields = ("preview", "submitted_at")
+    readonly_fields = ("invoice", "preview", "submitted_at")
     actions = [confirm_payments, reject_payments, "void_payments"]
+
+    @admin.display(description="Начисление", ordering="statement_id")
+    def invoice(self, obj):
+        stmt = MonthlyStatement.objects.filter(pk=obj.statement_id).first()
+        return str(stmt) if stmt is not None else f"счёт #{obj.statement_id}"
+
+    def get_form(self, request, obj=None, **kwargs):
+        if obj is None:
+            kwargs["form"] = RecordPaymentForm
+        return super().get_form(request, obj, **kwargs)
 
     def get_fields(self, request, obj=None):
         if obj is None:
             # Ручная отметка (шаг E1): счёт, сумма, примечание. Чека нет —
             # владелец, получивший наличные, не просит фотографию.
             return ("statement", "amount", "note")
-        return ("statement", "source", "status", "amount", "note", "file",
+        # Перевесить платёж на другой счёт больше нельзя: связь была
+        # редактируемым FK, а стала фактом команды (шаг H2) — правка мимо
+        # событий рассинхронизировала бы сверку.
+        return ("invoice", "source", "status", "amount", "note", "file",
                 "preview", "submitted_at")
 
     def save_model(self, request, obj, form, change):
@@ -361,7 +389,8 @@ class PaymentAdmin(admin.ModelAdmin):
         if change:
             super().save_model(request, obj, form, change)
             return
-        recorded = record_payment(obj.statement, obj.amount, note=obj.note)
+        recorded = record_payment(form.cleaned_data["statement"], obj.amount,
+                                  note=obj.note)
         obj.pk = recorded.pk
         obj.refresh_from_db()
 
@@ -396,15 +425,13 @@ class PaymentAdmin(admin.ModelAdmin):
         if voided:
             self.message_user(request, f"Отменено платежей: {voided}.")
 
-class PaymentInline(admin.TabularInline):
-    model = Payment
-    extra = 0
-    readonly_fields = ("source", "status", "amount", "submitted_at")
-
 @admin.register(MonthlyStatement)
 class MonthlyStatementAdmin(admin.ModelAdmin):
     list_display = ("apartment", "period", "total", "settled", "status",
                     "issued", "contract")
+    #: Платежи показываются ссылками, а не встроенной таблицей: инлайн Django
+    #: требует FK, который стал идентификатором (шаг H2, правило 1.3).
+    readonly_fields = ("payments_list",)
     list_filter = ("apartment", ("issued_at", admin.EmptyFieldListFilter),
                    ("tenancy_id", admin.EmptyFieldListFilter))
 
@@ -456,7 +483,17 @@ class MonthlyStatementAdmin(admin.ModelAdmin):
                                   level=messages.ERROR)
         if issued:
             self.message_user(request, f"Выставлено счетов: {issued}.")
-    inlines = [PaymentInline]
+
+    @admin.display(description="Платежи")
+    def payments_list(self, obj):
+        rows = Payment.objects.filter(statement_id=obj.pk)
+        if not rows:
+            return "—"
+        return format_html_join(
+            ", ", '<a href="{}">{} — {}</a>',
+            ((reverse("admin:payments_payment_change", args=[p.pk]),
+              p.get_status_display(), p.amount if p.amount is not None else "…")
+             for p in rows))
 
     @admin.action(description="Пересобрать сверку оплат")
     def rebuild_settlements(self, request, queryset):

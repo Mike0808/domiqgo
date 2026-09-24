@@ -67,7 +67,7 @@ def test_every_payment_step_writes_the_invoice_status(media_isolation):
     invoice.refresh_from_db()
     assert invoice.status == MonthlyStatement.PAID      # оплата подтверждена
 
-    stray = Payment.objects.create(statement=invoice, source=Payment.WEB,
+    stray = Payment.objects.create(statement_id=invoice.pk, source=Payment.WEB,
                                    status=Payment.PENDING)
     reject_payment(stray)
     invoice.refresh_from_db()
@@ -86,7 +86,7 @@ def test_invoice_status_is_a_stored_field_answerable_to_nothing():
         invoice.status = MonthlyStatement.PAID
 
     assert invoice.status == MonthlyStatement.UNPAID
-    assert invoice.payments.count() == 0
+    assert Payment.objects.filter(statement_id=invoice.pk).count() == 0
 
 
 # --------------------------------------------------------------------------
@@ -107,7 +107,7 @@ def test_a_payment_is_voided_with_a_trace_not_deleted(media_isolation):
     assert invoice.status == MonthlyStatement.PAID
 
     resp = _landlord_client().post(
-        f"/admin/billing/payment/{payment.pk}/delete/", {"post": "yes"})
+        f"/admin/payments/payment/{payment.pk}/delete/", {"post": "yes"})
     assert resp.status_code == 403               # операции удаления нет
 
     void_payment(payment, "не тот счёт")

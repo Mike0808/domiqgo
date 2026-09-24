@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from modules.notifications import api as notifications
 
-from ..models import Tenant
+from ..models import MonthlyStatement, Tenant
 from .intake import attach_receipt, NoUnpaidStatementError
 from .linking import AddressAlreadyBound, link_chat, InvalidLinkCodeError
 
@@ -55,7 +55,8 @@ def process_message(adapter, msg) -> str:
             payment = attach_receipt(tenant, ContentFile(data, name=name), source=msg.platform)
         except NoUnpaidStatementError:
             return "Нет неоплаченных начислений."
-        return (f"Чек получен, начисление за {_period_ru(payment.statement.period)} "
+        stmt = MonthlyStatement.objects.get(pk=payment.statement_id)
+        return (f"Чек получен, начисление за {_period_ru(stmt.period)} "
                 f"отправлено на проверку.")
 
     if tenant is None:
