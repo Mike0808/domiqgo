@@ -1,15 +1,27 @@
-"""Хранение платежей: ORM своей таблицы, read-контракт — с сырым соединением.
+"""Хранение платежей: ORM своей таблицы (шаг H2).
 
-Команды работают со своей моделью через ORM (шаг H2). Read-контракт для
-Reporting дополняет платёж полями счёта — а счётом до шага H3 владеет
-легаси-`billing/`, которого модулям импортировать нельзя, поэтому соединение
-идёт по имени таблицы `billing_monthlystatement`. На H3 счёт переедет в
-`modules/billing`, и соединение сменится на запрос к его API.
+Read-контракт для Reporting дополняет платёж полями счёта; с шага H3 счётом
+владеет модуль Billing, и вместо сырого соединения по имени таблицы платежи
+дополняются его же read-контрактом — обещание комментария времён G1
+исполнено. Соединения в SQL больше нет нигде: между модулями — только API.
 """
 
-from django.db import connection
-
 from .models import Payment
+
+
+def _invoice_index(statement_ids=None, period_from=None, period_to=None):
+    """Счета платежей — из read-контракта Billing, ключом по идентификатору."""
+    from modules.billing import api as billing
+
+    if statement_ids is None:
+        rows = billing.list_invoice_rows(period_from, period_to)
+        return {row["invoice_id"]: row for row in rows}
+    index = {}
+    for invoice_id in set(statement_ids):
+        row = billing.get_invoice(invoice_id)
+        if row is not None:
+            index[invoice_id] = row
+    return index
 
 
 # -- команды --------------------------------------------------------------
@@ -56,40 +68,34 @@ def set_state(payment_id, status, amount=..., note=...) -> None:
 
 # -- read-контракт (G1/G2) ------------------------------------------------
 
+def has_pending_claim(invoice_id) -> bool:
+    """Есть ли по счёту заявленный платёж — для статуса «на проверке»."""
+    return (Payment.objects
+            .filter(statement_id=invoice_id, status=Payment.PENDING)
+            .exists())
+
+
 def list_confirmed_payments(period_from=None, period_to=None) -> list[dict]:
-    with connection.cursor() as cursor:
-        where, args = ["p.status = 'confirmed'"], []
-        if period_from is not None:
-            where.append("s.period >= %s"); args.append(period_from)
-        if period_to is not None:
-            where.append("s.period <= %s"); args.append(period_to)
-        cursor.execute(
-            "SELECT s.apartment_id, s.period, p.source, p.amount,"
-            " p.submitted_at FROM payments_payment p"
-            " JOIN billing_monthlystatement s ON s.id = p.statement_id"
-            " WHERE " + " AND ".join(where) +
-            " ORDER BY p.submitted_at, p.id", args)
-        return [{
-            "property_id": row[0], "period": row[1], "source": row[2],
-            "amount": row[3], "submitted_at": row[4],
-        } for row in cursor.fetchall()]
+    invoices = _invoice_index(period_from=period_from, period_to=period_to)
+    rows = (Payment.objects
+            .filter(status=Payment.CONFIRMED, statement_id__in=invoices)
+            .order_by("submitted_at", "id"))
+    return [{
+        "property_id": invoices[p.statement_id]["property_id"],
+        "period": invoices[p.statement_id]["period"], "source": p.source,
+        "amount": p.amount, "submitted_at": p.submitted_at,
+    } for p in rows]
 
 
 def list_payments(statement_ids=None) -> list[dict]:
-    with connection.cursor() as cursor:
-        clause, args = "", []
-        if statement_ids is not None:
-            marks = ",".join(["%s"] * len(statement_ids)) or "NULL"
-            clause = f" WHERE p.statement_id IN ({marks})"
-            args = list(statement_ids)
-        cursor.execute(
-            "SELECT p.statement_id, s.apartment_id, s.period, p.source,"
-            " p.status, p.amount, p.note, p.submitted_at"
-            " FROM payments_payment p"
-            " JOIN billing_monthlystatement s ON s.id = p.statement_id"
-            + clause + " ORDER BY p.submitted_at, p.id", args)
-        return [{
-            "statement_id": row[0], "property_id": row[1], "period": row[2],
-            "source": row[3], "status": row[4], "amount": row[5],
-            "note": row[6], "submitted_at": row[7],
-        } for row in cursor.fetchall()]
+    invoices = _invoice_index(statement_ids)
+    rows = Payment.objects.order_by("submitted_at", "id")
+    if statement_ids is not None:
+        rows = rows.filter(statement_id__in=list(statement_ids))
+    return [{
+        "statement_id": p.statement_id,
+        "property_id": invoices[p.statement_id]["property_id"],
+        "period": invoices[p.statement_id]["period"], "source": p.source,
+        "status": p.status, "amount": p.amount, "note": p.note,
+        "submitted_at": p.submitted_at,
+    } for p in rows if p.statement_id in invoices]

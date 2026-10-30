@@ -1,11 +1,9 @@
-from decimal import Decimal
-
 from django.conf import settings
 from django.db import models
 
 # Объект недвижимости принадлежит Properties (шаг C3b). Здесь он нужен только
-# как цель двух оставшихся внешних ключей; читать его поля следует через
-# `modules.properties.api`.
+# как цель последнего внешнего ключа — `Tenant.apartment`; читать его поля
+# следует через `modules.properties.api`.
 from modules.properties.infrastructure.models import Apartment
 
 # Платёж принадлежит Payments (шаг H2). Таблица переименована в
@@ -17,11 +15,15 @@ from modules.payments.infrastructure.models import (  # noqa: F401
     Payment, receipt_upload_path,
 )
 
-# `Apartment` уехал в `modules/properties/` шагом C3b: домен, публичный API,
-# события. Таблица переименована в `properties_apartment`. Читать объект
-# отсюда следует через `modules.properties.api`; два внешних ключа на него
-# пока остаются — `Tenant.apartment` ждёт Tenancy (этап D),
-# `MonthlyStatement.apartment` — шага E2, где ключом счёта станет договор.
+# Счёт, сверка и политика принадлежат Billing (шаг H3; метка приложения —
+# «invoicing», таблицы остались `billing_*`). Команды — `modules.billing.api`;
+# реэкспорт моделей — для интерфейсного слоя: админки, кабинета, тестов.
+from modules.billing.infrastructure.models import (  # noqa: F401
+    BillingPolicy, MonthlyStatement, Settlement,
+)
+
+# `Tariff` уехал в modules/tariffs/ шагом C1, `Meter` и `MeterReading` — в
+# modules/metering/ шагом C2c: читать их следует через api модулей.
 
 class Tenant(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
@@ -54,125 +56,6 @@ class Tenant(models.Model):
     def __str__(self):
         return self.display_name
 
-# `Tariff` уехал в modules/tariffs/ шагом C1: у него не было ни одного FK и на
-# него не ссылалась ни одна модель, поэтому лист графа отделился без разрыва
-# связей. Ставки читаются через `modules.tariffs.api.get_rates_on`.
-
-# `METER_KIND_CHOICES`, `Meter` и `MeterReading` уехали в
-# `modules/metering/` шагом C2c плана миграции. Таблицы переименованы в
-# `metering_meter` и `metering_reading`; словарь стал каталогом видов ресурса
-# `modules/metering/domain/catalogue.py`. Читать их отсюда следует только
-# через `modules.metering.api`.
-
-class MonthlyStatement(models.Model):
-    #: Статус — не поле, а результат сверки (шаг E3, ADR-0015, дефект №15):
-    #: признанные суммы сравниваются с итогом. Константы остались — ими
-    #: говорят шаблоны, портал и тесты.
-    UNPAID = "unpaid"; PENDING = "pending"; PAID = "paid"
-    STATUS_LABELS = {UNPAID: "Не оплачено", PENDING: "На проверке",
-                     PAID: "Оплачено"}
-
-    apartment = models.ForeignKey(Apartment, on_delete=models.PROTECT, related_name="statements")
-    #: Договор, которому выставлен счёт (шаг E2, ADR-0024) — идентификатором,
-    #: без FK. Пусто у начислений за периоды до заведения жильца: такие
-    #: разбираются владельцем вручную (фильтр «без договора» в админке).
-    tenancy_id = models.PositiveIntegerField("Договор", null=True, blank=True,
-                                             db_index=True)
-    period = models.DateField("Период")
-    lines = models.JSONField("Строки начисления", default=list)
-    total = models.DecimalField("Итого", max_digits=12, decimal_places=2, default=Decimal("0"))
-    #: Момент предъявления (шаг E4, дефект №35). Пусто — черновик: он
-    #: пересчитывается сколько угодно, его никто не предъявлял. Выставленный
-    #: счёт неизменяем (инв. 2 Billing).
-    issued_at = models.DateTimeField("Выставлен", null=True, blank=True)
-    #: Срок оплаты фиксируется в счёте значением в момент выставления
-    #: (ADR-0013): смена политики не делает старые счета просроченными.
-    due_date = models.DateField("Оплатить до", null=True, blank=True)
-
-    class Meta:
-        verbose_name = "Начисление"
-        verbose_name_plural = "Начисления"
-        # Ключ счёта — (договор, период), а не (квартира, период): смена
-        # жильца в середине месяца даёт два счёта рядом (шаг E2, дефект №6).
-        constraints = [models.UniqueConstraint(
-            condition=models.Q(tenancy_id__isnull=False),
-            fields=("tenancy_id", "period"),
-            name="one_statement_per_tenancy_period")]
-        ordering = ["-period"]
-
-    @property
-    def is_issued(self) -> bool:
-        return self.issued_at is not None
-
-    @property
-    def settled_total(self) -> Decimal:
-        """Признанная оплата — из проекции, которую ведёт сверка (E3)."""
-        row = Settlement.objects.filter(statement_id=self.pk).first()
-        return row.confirmed_total if row is not None else Decimal("0")
-
-    @property
-    def status(self) -> str:
-        """Погашен, если признано не меньше итога; «на проверке», пока есть
-        заявленный платёж. Частичная оплата счёт не закрывает — в этом смысл
-        сверки (Q3 карты: «хватило ли»)."""
-        settled = self.settled_total
-        if settled > 0 and settled >= self.total:
-            return self.PAID
-        if Payment.objects.filter(statement_id=self.pk,
-                                  status=Payment.PENDING).exists():
-            return self.PENDING
-        return self.UNPAID
-
-    def get_status_display(self) -> str:
-        """Имя как у поля с choices — шаблоны не заметили исчезновения
-        колонки."""
-        return self.STATUS_LABELS[self.status]
-
-    def __str__(self):
-        return f"{self.apartment} {self.period:%Y-%m} — {self.total} ₽"
-
-
-class BillingPolicy(models.Model):
-    """Политика срока оплаты — единая для всех счетов установки (ADR-0013).
-
-    Число дней от выставления; на P2, когда договоры станут разными, срок
-    переедет в Tenancy — ожидаемое развитие, а не исправление ошибки.
-    """
-
-    due_days = models.PositiveSmallIntegerField("Дней на оплату", default=10)
-
-    class Meta:
-        verbose_name = "Политика счетов"
-        verbose_name_plural = "Политика счетов"
-
-    @classmethod
-    def get(cls) -> "BillingPolicy":
-        row = cls.objects.first()
-        return row if row is not None else cls.objects.create()
-
-    def __str__(self):
-        return f"Срок оплаты: {self.due_days} дн. от выставления"
-
-
-class Settlement(models.Model):
-    """Проекция признанных оплат по счёту (ADR-0015).
-
-    Строится исключительно из событий PaymentConfirmed и PaymentVoided и
-    обязана быть перестраиваемой из журнала шины — `RebuildSettlement`.
-    Осознанное дублирование: источник истины по платежам — платёжный контур,
-    но спрашивать его Billing не может, не замкнув цикл (ADR-0014).
-    """
-
-    statement_id = models.PositiveIntegerField("Начисление", unique=True)
-    confirmed_total = models.DecimalField(
-        "Признано", max_digits=12, decimal_places=2, default=Decimal("0"))
-
-    class Meta:
-        verbose_name = "Сверка оплат"
-        verbose_name_plural = "Сверка оплат"
-
-    def __str__(self):
-        return f"Счёт #{self.statement_id}: признано {self.confirmed_total} ₽"
 
 def document_upload_path(instance, filename):
     return f"documents/tenant_{instance.tenant_id}/{filename}"
@@ -189,8 +72,3 @@ class Document(models.Model):
 
     def __str__(self):
         return self.title
-
-# `Payment` уехал в `modules/payments/` шагом H2: домен, команды, события,
-# публикуемые из application/. Таблица переименована в `payments_payment`,
-# внешний ключ на счёт стал идентификатором (правило 1.3) — каскада от
-# удаления счёта больше нет, что домену впору: платёж не удаляется (инв. 5).

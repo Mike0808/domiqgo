@@ -62,6 +62,8 @@ INSTALLED_APPS = [
     "modules.tenancy.apps.TenancyConfig",
     # Этап H2: платёжный контур — таблица и команды платежа.
     "modules.payments.apps.PaymentsConfig",
+    # Этап H3: счётный контур. Метка — «invoicing»: «billing» держит легаси.
+    "modules.billing.apps.BillingConfig",
     # Этап F: доставка сообщений.
     "modules.notifications.apps.NotificationsConfig",
     # Этап G: выгрузки.
@@ -203,6 +205,7 @@ MIGRATION_MODULES = {
     "identity": "modules.identity.infrastructure.migrations",
     "tenancy": "modules.tenancy.infrastructure.migrations",
     "payments": "modules.payments.infrastructure.migrations",
+    "invoicing": "modules.billing.infrastructure.migrations",
     "notifications": "modules.notifications.infrastructure.migrations",
     "reporting": "modules.reporting.infrastructure.migrations",
 }

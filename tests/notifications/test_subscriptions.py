@@ -35,7 +35,7 @@ def home(settings, tmp_path):
     contract_id = let_in(flat_obj(flat), account_id=user.pk, full_name="Иванов",
                          rent="30000")
     notifications.bind_channel(user.pk, "telegram", "555")
-    tenant = Tenant.objects.create(user=user, apartment=flat_obj(flat))
+    tenant = Tenant.objects.create(user=user, apartment_id=flat_obj(flat).pk)
     return flat, user, contract_id, tenant
 
 
@@ -51,7 +51,7 @@ def _texts(account_id):
 
 def _draft(flat, contract_id, total="21500"):
     return MonthlyStatement.objects.create(
-        apartment=flat_obj(flat), period=date(2026, 7, 1),
+        apartment_id=flat_obj(flat).pk, period=date(2026, 7, 1),
         total=Decimal(total), tenancy_id=contract_id)
 
 

@@ -31,15 +31,15 @@ def _tenant():
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("t", password="x")
     let_in(a, account_id=u.pk)   # платёж ищет счёт договора (шаг E2)
-    return Tenant.objects.create(user=u, apartment=a), a
+    return Tenant.objects.create(user=u, apartment_id=a.pk), a
 
 def _receipt():
     return ContentFile(b"img", name="r.jpg")
 
 def test_attach_targets_earliest_unpaid_and_sets_pending(media_isolation):
     tenant, a = _tenant()
-    june = _issued(apartment=a, period=date(2026, 6, 1))
-    july = _issued(apartment=a, period=date(2026, 7, 1))
+    june = _issued(apartment_id=a.pk, period=date(2026, 6, 1))
+    july = _issued(apartment_id=a.pk, period=date(2026, 7, 1))
     payment = attach_receipt(tenant, _receipt(), source=Payment.TELEGRAM)
     assert payment.statement_id == june.pk           # earliest
     june.refresh_from_db(); july.refresh_from_db()
@@ -51,22 +51,22 @@ def test_attach_targets_earliest_unpaid_and_sets_pending(media_isolation):
 def test_attach_skips_pending_and_paid(media_isolation):
     tenant, a = _tenant()
     from billing.tests.settle import pend, settle
-    settle(_issued(apartment=a, period=date(2026, 5, 1)))
-    pend(_issued(apartment=a, period=date(2026, 6, 1)))
-    unpaid = _issued(apartment=a, period=date(2026, 7, 1))
+    settle(_issued(apartment_id=a.pk, period=date(2026, 5, 1)))
+    pend(_issued(apartment_id=a.pk, period=date(2026, 6, 1)))
+    unpaid = _issued(apartment_id=a.pk, period=date(2026, 7, 1))
     payment = attach_receipt(tenant, _receipt(), source=Payment.WEB)
     assert payment.statement_id == unpaid.pk
 
 def test_attach_raises_when_nothing_unpaid(media_isolation):
     tenant, a = _tenant()
     from billing.tests.settle import settle
-    settle(_issued(apartment=a, period=date(2026, 7, 1)))
+    settle(_issued(apartment_id=a.pk, period=date(2026, 7, 1)))
     with pytest.raises(NoUnpaidStatementError):
         attach_receipt(tenant, _receipt(), source=Payment.TELEGRAM)
 
 def test_confirm_sets_paid_and_records_the_amount(media_isolation):
     tenant, a = _tenant()
-    stmt = _issued(apartment=a, period=date(2026, 7, 1))
+    stmt = _issued(apartment_id=a.pk, period=date(2026, 7, 1))
     payment = attach_receipt(tenant, _receipt(), source=Payment.TELEGRAM)
     confirm_payment(payment, Decimal("21500"))
     payment.refresh_from_db(); stmt.refresh_from_db()
@@ -78,7 +78,7 @@ def test_confirm_sets_paid_and_records_the_amount(media_isolation):
 def test_confirming_without_a_positive_amount_is_refused(media_isolation):
     from billing.services.intake import PositiveAmountRequired
     tenant, a = _tenant()
-    _issued(apartment=a, period=date(2026, 7, 1))
+    _issued(apartment_id=a.pk, period=date(2026, 7, 1))
     payment = attach_receipt(tenant, _receipt(), source=Payment.TELEGRAM)
     for bad in (None, Decimal("0"), Decimal("-1")):
         with pytest.raises(PositiveAmountRequired):
@@ -92,7 +92,7 @@ def test_record_payment_marks_paid_without_a_receipt(media_isolation):
     формальности."""
     from billing.services.intake import record_payment
     tenant, a = _tenant()
-    stmt = _issued(apartment=a, period=date(2026, 7, 1),
+    stmt = _issued(apartment_id=a.pk, period=date(2026, 7, 1),
                                            )
     payment = record_payment(stmt, Decimal("21500"), note="наличными")
     stmt.refresh_from_db()
@@ -103,7 +103,7 @@ def test_record_payment_marks_paid_without_a_receipt(media_isolation):
 
 def test_reject_reverts_to_unpaid_when_no_other_pending(media_isolation):
     tenant, a = _tenant()
-    stmt = _issued(apartment=a, period=date(2026, 7, 1))
+    stmt = _issued(apartment_id=a.pk, period=date(2026, 7, 1))
     payment = attach_receipt(tenant, _receipt(), source=Payment.TELEGRAM)
     reject_payment(payment, note="нечитаемый чек")
     payment.refresh_from_db(); stmt.refresh_from_db()
@@ -113,7 +113,7 @@ def test_reject_reverts_to_unpaid_when_no_other_pending(media_isolation):
 
 def test_reject_keeps_pending_when_another_pending_exists(media_isolation):
     tenant, a = _tenant()
-    stmt = _issued(apartment=a, period=date(2026, 7, 1))
+    stmt = _issued(apartment_id=a.pk, period=date(2026, 7, 1))
     p1 = attach_receipt(tenant, _receipt(), source=Payment.TELEGRAM)
     # a second pending payment on the same statement
     p2 = Payment.objects.create(statement_id=stmt.pk, source=Payment.WEB,
@@ -124,7 +124,7 @@ def test_reject_keeps_pending_when_another_pending_exists(media_isolation):
 
 def test_reject_stray_pending_on_paid_statement_keeps_it_paid(media_isolation):
     tenant, a = _tenant()
-    stmt = _issued(apartment=a, period=date(2026, 7, 1))
+    stmt = _issued(apartment_id=a.pk, period=date(2026, 7, 1))
     from billing.tests.settle import settle
     settle(stmt)
     # a stray pending payment attached after the statement was already confirmed paid

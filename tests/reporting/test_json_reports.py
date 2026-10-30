@@ -30,7 +30,7 @@ def _home(username="ivanov", label="кв. на Ленина"):
     user = User.objects.create_user(username, password="pass12345")
     contract_id = let_in(flat, account_id=user.pk, full_name="Иванов",
                          rent="30000")
-    tenant = Tenant.objects.create(user=user, apartment=flat)
+    tenant = Tenant.objects.create(user=user, apartment_id=flat.pk)
     return flat, user, contract_id, tenant
 
 
@@ -41,7 +41,7 @@ def _payload(raw) -> dict:
 def test_the_full_dump_carries_every_section():
     flat, user, contract_id, tenant = _home()
     stmt = issue(MonthlyStatement.objects.create(
-        apartment=flat, period=date(2026, 7, 1), total=Decimal("100"),
+        apartment_id=flat.pk, period=date(2026, 7, 1), total=Decimal("100"),
         tenancy_id=contract_id, lines=[]))
     record_payment(stmt, Decimal("100"))
     Document.objects.create(tenant=tenant,
@@ -64,10 +64,10 @@ def test_my_data_holds_only_the_asked_account():
     flat, user, contract_id, _ = _home()
     other_flat, other_user, other_contract, _ = _home("petrov", "чужая кв")
     issue(MonthlyStatement.objects.create(
-        apartment=flat, period=date(2026, 7, 1), total=Decimal("1"),
+        apartment_id=flat.pk, period=date(2026, 7, 1), total=Decimal("1"),
         tenancy_id=contract_id, lines=[]))
     issue(MonthlyStatement.objects.create(
-        apartment=other_flat, period=date(2026, 7, 1), total=Decimal("2"),
+        apartment_id=other_flat.pk, period=date(2026, 7, 1), total=Decimal("2"),
         tenancy_id=other_contract, lines=[]))
     identity.grant_privacy_consent(user.pk, "2026-07-27",
                                    __import__("django.utils.timezone",

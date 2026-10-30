@@ -63,11 +63,11 @@ def test_after_the_choice_only_the_party_keeps_the_cabinet():
     users, drafts = {}, {}
     for username in ("ivanov", "ivanova"):
         user = User.objects.create_user(username, password="pass12345")
-        Tenant.objects.create(user=user, apartment=apartment)
+        Tenant.objects.create(user=user, apartment_id=apartment.pk)
         users[username] = user
         drafts[username] = draft(apartment, user.pk)
     invoice = MonthlyStatement.objects.create(
-        apartment=apartment, period=date(2026, 5, 1), total=Decimal("1000.00"),
+        apartment_id=apartment.pk, period=date(2026, 5, 1), total=Decimal("1000.00"),
         tenancy_id=drafts["ivanov"])   # счёт ключуется договором (шаг E2)
 
     chosen = tenancy_api.active_tenancy_for_account(users["ivanov"].pk, date(2026, 5, 1))

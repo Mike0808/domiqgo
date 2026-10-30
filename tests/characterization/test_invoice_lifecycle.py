@@ -47,7 +47,7 @@ def _apartment(label="кв"):
 def _tenant(apartment, username):
     user = User.objects.create_user(username, password="pass12345")
     draft(apartment, user.pk)   # кабинет открывается по договору (D1d)
-    return Tenant.objects.create(user=user, apartment=apartment), user
+    return Tenant.objects.create(user=user, apartment_id=apartment.pk), user
 
 
 def _login(user):
@@ -74,7 +74,7 @@ def test_a_new_tenant_does_not_see_invoices_of_the_previous_one():
     prev_contract = tenancy_api.active_tenancy_for_account(
         prev_user.pk, date(2026, 5, 1))
     MonthlyStatement.objects.create(
-        apartment=apartment, period=date(2026, 5, 1), total=Decimal("1234.00"),
+        apartment_id=apartment.pk, period=date(2026, 5, 1), total=Decimal("1234.00"),
         tenancy_id=prev_contract.tenancy_id)
     previous.delete()  # прежний жилец съехал; его счета — история его договора
 
@@ -90,15 +90,15 @@ def test_two_tenancies_in_one_month_may_both_be_invoiced():
     счёт по-прежнему один."""
     apartment = _apartment()
     first = MonthlyStatement.objects.create(
-        apartment=apartment, period=date(2026, 5, 1), tenancy_id=101)
+        apartment_id=apartment.pk, period=date(2026, 5, 1), tenancy_id=101)
     MonthlyStatement.objects.create(
-        apartment=apartment, period=date(2026, 5, 1), tenancy_id=102)
+        apartment_id=apartment.pk, period=date(2026, 5, 1), tenancy_id=102)
 
     assert MonthlyStatement.objects.filter(period=date(2026, 5, 1)).count() == 2
     with pytest.raises(IntegrityError):
         with transaction.atomic():
             MonthlyStatement.objects.create(
-                apartment=apartment, period=first.period, tenancy_id=101)
+                apartment_id=apartment.pk, period=first.period, tenancy_id=101)
 
 
 # --------------------------------------------------------------------------
@@ -125,7 +125,7 @@ def test_reading_lock_follows_issuing(issued, locked):
     from billing.tests.settle import issue, settle
     from modules.tenancy import api as tenancy_api
     stmt = MonthlyStatement.objects.create(
-        apartment=apartment, period=period, total=Decimal("500.00"),
+        apartment_id=apartment.pk, period=period, total=Decimal("500.00"),
         tenancy_id=tenancy_api.tenancy_for(apartment.pk, period).tenancy_id)
     settle(stmt)                     # оплачен в обоих случаях
     if issued:
@@ -154,7 +154,7 @@ def test_readings_make_a_draft_and_only_the_owner_issues_it():
 
     _login(user).post("/", {"cold_water": "110", "electricity_single": "1500"})
 
-    draft = MonthlyStatement.objects.get(apartment=apartment, period=period)
+    draft = MonthlyStatement.objects.get(apartment_id=apartment.pk, period=period)
     assert draft.total == Decimal("968.50")   # сумма видна сразу — сценарий цел
     assert not draft.is_issued                # но никто ничего не предъявлял
 

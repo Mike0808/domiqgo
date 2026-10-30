@@ -231,7 +231,7 @@ def test_deleting_an_apartment_with_history_is_refused():
     Meter.objects.create(apartment_id=apartment.pk, resource="cold_water", initial_value=Decimal("100"))
     MeterReading.objects.create(apartment_id=apartment.pk, period=PERIOD,
                                 resource="cold_water", value=Decimal("110"))
-    MonthlyStatement.objects.create(apartment=apartment, period=PERIOD,
+    MonthlyStatement.objects.create(apartment_id=apartment.pk, period=PERIOD,
                                     total=Decimal("1000.00"))
 
     with pytest.raises(ProtectedError):
@@ -257,7 +257,7 @@ def test_deleting_an_apartment_with_history_is_refused():
             id="reading",
         ),
         pytest.param(
-            lambda a: MonthlyStatement.objects.create(apartment=a, period=PERIOD,
+            lambda a: MonthlyStatement.objects.create(apartment_id=a.pk, period=PERIOD,
                                                       total=Decimal("1000.00")),
             id="statement",
         ),
@@ -305,7 +305,7 @@ def test_deleting_an_apartment_with_a_tenant_is_refused():
     """
     apartment = Apartment.objects.create(label="кв")
     user = User.objects.create_user("ivanov", password="pass12345")
-    Tenant.objects.create(user=user, apartment=apartment)
+    Tenant.objects.create(user=user, apartment_id=apartment.pk)
 
     with pytest.raises(ProtectedError):
         apartment.delete()

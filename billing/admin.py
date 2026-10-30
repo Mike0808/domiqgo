@@ -302,14 +302,15 @@ def _adopt_reading_row(obj):
 def regenerate_statements(modeladmin, request, queryset):
     ok = 0
     for stmt in queryset:
+        flat = Apartment.objects.filter(pk=stmt.apartment_id).first()
         try:
-            generate_statement(stmt.apartment, stmt.period)
+            generate_statement(flat, stmt.period)
             ok += 1
-            _warn_about_missing_meters(modeladmin, request, stmt.apartment)
+            _warn_about_missing_meters(modeladmin, request, flat)
         except Exception as exc:  # report per-statement failure, don't abort the batch
             modeladmin.message_user(
                 request,
-                f"Ошибка пересчёта ({stmt.apartment} {stmt.period:%Y-%m}): {exc}",
+                f"Ошибка пересчёта ({flat} {stmt.period:%Y-%m}): {exc}",
                 level=messages.ERROR,
             )
     if ok:
@@ -432,8 +433,15 @@ class MonthlyStatementAdmin(admin.ModelAdmin):
     #: Платежи показываются ссылками, а не встроенной таблицей: инлайн Django
     #: требует FK, который стал идентификатором (шаг H2, правило 1.3).
     readonly_fields = ("payments_list",)
-    list_filter = ("apartment", ("issued_at", admin.EmptyFieldListFilter),
+    list_filter = ("apartment_id", ("issued_at", admin.EmptyFieldListFilter),
                    ("tenancy_id", admin.EmptyFieldListFilter))
+
+    @admin.display(description="Квартира", ordering="apartment_id")
+    def apartment(self, obj):
+        # Квартира — идентификатором с H3 (правило 1.3); название объекта
+        # подставляет интерфейсный слой, как в админках приборов.
+        flat = Apartment.objects.filter(pk=obj.apartment_id).first()
+        return flat.label if flat else f"— (id {obj.apartment_id})"
 
     @admin.display(description="Выставлен", ordering="issued_at")
     def issued(self, obj):

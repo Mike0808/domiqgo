@@ -24,15 +24,15 @@ def test_reading_unique_per_meter_period():
 def test_statement_unique_per_tenancy_and_period():
     """Ключ счёта — (договор, период), а не (квартира, период): шаг E2."""
     a = Apartment.objects.create(label="кв. 2")
-    MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1), tenancy_id=1)
-    MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1), tenancy_id=2)
+    MonthlyStatement.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), tenancy_id=1)
+    MonthlyStatement.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), tenancy_id=2)
     with pytest.raises(IntegrityError):
-        MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1), tenancy_id=1)
+        MonthlyStatement.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), tenancy_id=1)
 
 def test_tenant_links_user_and_apartment():
     a = Apartment.objects.create(label="кв. 3")
     u = User.objects.create_user("ivanov", password="x")
-    t = Tenant.objects.create(user=u, apartment=a)
+    t = Tenant.objects.create(user=u, apartment_id=a.pk)
     assert t.apartment == a
     assert u.tenant == t
     # мессенджера на профиле больше нет: канал доставки — в Notifications (F1)
@@ -58,7 +58,7 @@ def test_a_tenant_is_named_by_their_running_tenancy():
 
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("ivanov")
-    tenant = Tenant.objects.create(user=u, apartment=a)
+    tenant = Tenant.objects.create(user=u, apartment_id=a.pk)
     assert str(tenant) == "ivanov"            # договора нет — имя входа
 
     let_in(a, account_id=u.pk, full_name="Иванов Иван")

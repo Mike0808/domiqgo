@@ -40,7 +40,7 @@ def tenant_setup():
     MeterReading.objects.create(apartment_id=a.pk, period=baseline_period, resource="cold_water", value=Decimal("100"))
     MeterReading.objects.create(apartment_id=a.pk, period=baseline_period, resource="electricity_single", value=Decimal("1400"))
     u = User.objects.create_user("ivanov", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a)
+    Tenant.objects.create(user=u, apartment_id=a.pk)
     let_in(a, account_id=u.pk, full_name="Иванов")   # договор периода (D1b)
     return a, u
 
@@ -62,7 +62,7 @@ def test_submit_readings_generates_statement(tenant_setup):
     period = _period_first_of_this_month()
     assert MeterReading.objects.filter(apartment_id=a.pk, period=period, resource="cold_water",
                                        entered_by_tenant=True).exists()
-    stmt = MonthlyStatement.objects.get(apartment=a, period=period)
+    stmt = MonthlyStatement.objects.get(apartment_id=a.pk, period=period)
     # (110-100)*48.15 + (1500-1400)*4.87 = 968.50 — below 10 000, not rounded
     assert stmt.total == Decimal("968.50")
 
@@ -101,10 +101,10 @@ def test_resubmit_with_backward_meter_preserves_prior_readings(tenant_setup):
 
 def test_tenant_cannot_see_other_apartment_history(tenant_setup):
     a, u = tenant_setup
-    MonthlyStatement.objects.create(apartment=a, period=date(2026, 5, 1),
+    MonthlyStatement.objects.create(apartment_id=a.pk, period=date(2026, 5, 1),
                                     total=Decimal("123"), tenancy_id=_cid(u))
     other = Apartment.objects.create(label="чужая кв")
-    MonthlyStatement.objects.create(apartment=other, period=date(2026, 5, 1), total=Decimal("999"))
+    MonthlyStatement.objects.create(apartment_id=other.pk, period=date(2026, 5, 1), total=Decimal("999"))
     c = _login(u)
     resp = c.get("/history/")
     assert resp.status_code == 200
@@ -117,12 +117,12 @@ def test_issued_month_locks_readings(tenant_setup):
     period = _period_first_of_this_month()
     from billing.tests.settle import issue
     issue(MonthlyStatement.objects.create(
-        apartment=a, period=period, total=Decimal("500"), tenancy_id=_cid(u)))
+        apartment_id=a.pk, period=period, total=Decimal("500"), tenancy_id=_cid(u)))
     c = _login(u)
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
     assert resp.status_code == 302               # rejected with a message, not applied
     assert not MeterReading.objects.filter(apartment_id=a.pk, period=period).exists()
-    stmt = MonthlyStatement.objects.get(apartment=a, period=period)
+    stmt = MonthlyStatement.objects.get(apartment_id=a.pk, period=period)
     assert stmt.total == Decimal("500")          # issued amount untouched
     page = c.get("/")
     assert "Показания заблокированы" in page.content.decode()
@@ -133,7 +133,7 @@ def test_a_draft_month_stays_editable_even_when_paid(tenant_setup):
     period = _period_first_of_this_month()
     from billing.tests.settle import settle
     settle(MonthlyStatement.objects.create(
-        apartment=a, period=period, total=Decimal("500"), tenancy_id=_cid(u)))
+        apartment_id=a.pk, period=period, total=Decimal("500"), tenancy_id=_cid(u)))
     c = _login(u)
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
     assert resp.status_code == 302
@@ -167,13 +167,13 @@ def test_missing_sewage_tariff_shows_message_not_500(db):
     MeterReading.objects.create(apartment_id=a.pk, period=baseline, resource="cold_water", value=Decimal("100"))
     MeterReading.objects.create(apartment_id=a.pk, period=baseline, resource="electricity_single", value=Decimal("1400"))
     u = User.objects.create_user("petrov", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a)
+    Tenant.objects.create(user=u, apartment_id=a.pk)
     let_in(a, account_id=u.pk)   # договор периода (D1b)
     c = Client()
     assert c.login(username="petrov", password="pass12345")
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
     assert resp.status_code == 200  # graceful re-render, not a 500
-    assert not MonthlyStatement.objects.filter(apartment=a, period=period).exists()
+    assert not MonthlyStatement.objects.filter(apartment_id=a.pk, period=period).exists()
 
 def test_first_month_uses_contract_initial_values(db):
     
@@ -185,7 +185,7 @@ def test_first_month_uses_contract_initial_values(db):
     Meter.objects.create(apartment_id=a.pk, resource="electricity_single", serial_number="E-77",
                          initial_value=Decimal("1400"))
     u = User.objects.create_user("newbie", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a)
+    Tenant.objects.create(user=u, apartment_id=a.pk)
     let_in(a, account_id=u.pk)   # договор периода (D1b)
     c = Client()
     assert c.login(username="newbie", password="pass12345")
@@ -195,7 +195,7 @@ def test_first_month_uses_contract_initial_values(db):
     # first-ever submission bills from the contract values, not from zero
     resp = c.post("/", {"cold_water": "110", "electricity_single": "1500"})
     assert resp.status_code == 302
-    stmt = MonthlyStatement.objects.get(apartment=a)
+    stmt = MonthlyStatement.objects.get(apartment_id=a.pk)
     assert stmt.total == Decimal("968.50")   # below 10 000 — not rounded
 
 def test_missing_heat_norm_shows_message_not_a_bill_without_heating(db):
@@ -213,14 +213,14 @@ def test_missing_heat_norm_shows_message_not_a_bill_without_heating(db):
     Meter.objects.create(apartment_id=a.pk, resource="hot_water", initial_value=Decimal("50"))
     Meter.objects.create(apartment_id=a.pk, resource="electricity_single", initial_value=Decimal("1400"))
     u = User.objects.create_user("gvs", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a)
+    Tenant.objects.create(user=u, apartment_id=a.pk)
     let_in(a, account_id=u.pk)   # договор периода (D1b)
     c = Client()
     assert c.login(username="gvs", password="pass12345")
     resp = c.post("/", {"hot_water": "55", "electricity_single": "1500"})
     assert resp.status_code == 200            # понятное сообщение, не 500
     assert "Норматив подогрева" in resp.content.decode()
-    assert not MonthlyStatement.objects.filter(apartment=a).exists()
+    assert not MonthlyStatement.objects.filter(apartment_id=a.pk).exists()
 
 def test_a_tenant_without_registered_meters_has_nothing_to_submit(db):
     """Шаг C2e: форма ввода строится по заведённым приборам.
@@ -239,7 +239,7 @@ def test_a_tenant_without_registered_meters_has_nothing_to_submit(db):
     publish_tariff_version(utility="electricity_single", rate=Decimal("4.87"), effective_from=date(2020, 1, 1))
     # ни одного прибора в реестре
     u = User.objects.create_user("orphan", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a)
+    Tenant.objects.create(user=u, apartment_id=a.pk)
     let_in(a, account_id=u.pk)   # договор периода (D1b)
     c = Client()
     assert c.login(username="orphan", password="pass12345")
@@ -251,7 +251,7 @@ def test_a_tenant_without_registered_meters_has_nothing_to_submit(db):
     c.post("/", {"cold_water": "110", "electricity_single": "1500"})
 
     assert not MeterReading.objects.filter(apartment_id=a.pk).exists()
-    stmt = MonthlyStatement.objects.get(apartment=a)
+    stmt = MonthlyStatement.objects.get(apartment_id=a.pk)
     assert [line["code"] for line in stmt.lines] == []
 
 
@@ -276,7 +276,7 @@ def test_a_moved_out_tenant_loses_the_cabinet(tenant_setup):
 def test_a_profile_without_a_contract_does_not_open_the_cabinet(db):
     a = Apartment.objects.create(label="кв")
     u = User.objects.create_user("nocontract", password="pass12345")
-    Tenant.objects.create(user=u, apartment=a)   # профиль есть, договора нет
+    Tenant.objects.create(user=u, apartment_id=a.pk)   # профиль есть, договора нет
 
     page = _login(u).get("/")
 

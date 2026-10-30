@@ -58,6 +58,15 @@ def void_payment(payment_id, reason) -> None:
     _commands().void_payment(payment_id, reason)
 
 
+def has_pending_claim(invoice_id) -> bool:
+    """Есть ли по счёту заявленный платёж, ждущий решения владельца.
+
+    Появился на H3 — для статуса счёта «на проверке»: Billing спрашивать
+    Payments не вправе, провайдер этого ответа внедряет интерфейсный слой.
+    """
+    return _repository().has_pending_claim(invoice_id)
+
+
 def list_confirmed_payments(period_from=None, period_to=None) -> list[dict]:
     """Подтверждённые платежи с суммами: объект, период счёта, источник,
     сумма, момент получения. Границы — по периоду счёта."""
@@ -73,7 +82,7 @@ def list_payments(statement_ids=None) -> list[dict]:
 __all__ = [
     "submit_receipt", "earliest_unpaid_invoice", "confirm_payment",
     "record_payment", "reject_payment", "void_payment",
-    "list_confirmed_payments", "list_payments",
+    "has_pending_claim", "list_confirmed_payments", "list_payments",
     "NoUnpaidStatementError", "InvoiceNotIssued", "OnlyConfirmedIsVoided",
     "VoidReasonRequired", "PositiveAmountRequired",
 ]

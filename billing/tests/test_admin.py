@@ -34,9 +34,9 @@ def test_regenerate_action_recomputes_total(admin_client):
     Meter.objects.create(apartment_id=a.pk, resource="electricity_single", initial_value=Decimal("0"))
     MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), resource="cold_water", value=Decimal("110"))
     MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), resource="electricity_single", value=Decimal("1600"))
-    stmt = MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1))
+    stmt = MonthlyStatement.objects.create(apartment_id=a.pk, period=date(2026, 7, 1))
 
-    admin_client.post("/admin/billing/monthlystatement/", {
+    admin_client.post("/admin/invoicing/monthlystatement/", {
         "action": "regenerate_statements",
         "_selected_action": [str(stmt.pk)],
     })
@@ -54,8 +54,8 @@ def test_regenerate_action_reports_failure_without_500(admin_client):
     Meter.objects.create(apartment_id=a.pk, resource="electricity_single", initial_value=Decimal("0"))
     MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), resource="cold_water", value=Decimal("110"))
     MeterReading.objects.create(apartment_id=a.pk, period=date(2026, 7, 1), resource="electricity_single", value=Decimal("1600"))
-    stmt = MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1))  # sewage tariff missing
-    resp = admin_client.post("/admin/billing/monthlystatement/", {
+    stmt = MonthlyStatement.objects.create(apartment_id=a.pk, period=date(2026, 7, 1))  # sewage tariff missing
+    resp = admin_client.post("/admin/invoicing/monthlystatement/", {
         "action": "regenerate_statements",
         "_selected_action": [str(stmt.pk)],
     }, follow=True)
@@ -75,7 +75,7 @@ def test_admin_saving_reading_recalculates_statement(admin_client):
         "resource": "cold_water", "value": "110",
     }, follow=True)
     assert resp.status_code == 200
-    stmt = MonthlyStatement.objects.get(apartment=a, period=date(2026, 7, 1))
+    stmt = MonthlyStatement.objects.get(apartment_id=a.pk, period=date(2026, 7, 1))
     assert stmt.total == Decimal("968.50")  # recalculated on save; below 10 000 — not rounded
 
 
@@ -111,9 +111,9 @@ def test_recalculating_warns_about_meters_that_are_not_registered(admin_client):
     a = Apartment.objects.create(label="кв. 10", has_hot_water=False,
                                  has_sewage=False)
     let_in(a)
-    stmt = MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1))
+    stmt = MonthlyStatement.objects.create(apartment_id=a.pk, period=date(2026, 7, 1))
 
-    resp = admin_client.post("/admin/billing/monthlystatement/", {
+    resp = admin_client.post("/admin/invoicing/monthlystatement/", {
         "action": "regenerate_statements",
         "_selected_action": [str(stmt.pk)],
     }, follow=True)

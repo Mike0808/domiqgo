@@ -36,7 +36,7 @@ def _contract():
 
 def _issued(flat, contract_id, month, total="100"):
     return issue(MonthlyStatement.objects.create(
-        apartment=flat, period=date(2026, month, 1), total=Decimal(total),
+        apartment_id=flat.pk, period=date(2026, month, 1), total=Decimal(total),
         tenancy_id=contract_id))
 
 
@@ -87,7 +87,7 @@ def test_record_payment_refuses_a_draft_and_a_stranger():
     """По черновику не платят (E4), по несуществующему счёту — тем более."""
     flat, contract_id = _contract()
     draft = MonthlyStatement.objects.create(
-        apartment=flat, period=date(2026, 7, 1), total=Decimal("100"),
+        apartment_id=flat.pk, period=date(2026, 7, 1), total=Decimal("100"),
         tenancy_id=contract_id)
 
     with pytest.raises(api.InvoiceNotIssued):
@@ -123,7 +123,7 @@ def test_outstanding_invoices_come_from_the_billing_read_contract(media_isolatio
     _issued(flat, contract_id, 6)
     settle(_issued(flat, contract_id, 5))
     MonthlyStatement.objects.create(   # черновик не предъявлен — не в счёт
-        apartment=flat, period=date(2026, 8, 1), total=Decimal("1"),
+        apartment_id=flat.pk, period=date(2026, 8, 1), total=Decimal("1"),
         tenancy_id=contract_id)
 
     rows = billing.list_outstanding_invoices(tenancy_id=contract_id,

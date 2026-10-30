@@ -11,7 +11,7 @@ def media_isolation(settings, tmp_path):
 
 def _stmt():
     a = Apartment.objects.create(label="кв. 1")
-    return MonthlyStatement.objects.create(apartment=a, period=date(2026, 7, 1))
+    return MonthlyStatement.objects.create(apartment_id=a.pk, period=date(2026, 7, 1))
 
 def test_payment_defaults_to_pending(media_isolation):
     stmt = _stmt()

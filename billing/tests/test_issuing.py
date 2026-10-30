@@ -21,7 +21,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def _draft(tenancy_id=1, total="968.50"):
     a = Apartment.objects.create(label="кв")
     return MonthlyStatement.objects.create(
-        apartment=a, period=date(2026, 7, 1), total=Decimal(total),
+        apartment_id=a.pk, period=date(2026, 7, 1), total=Decimal(total),
         tenancy_id=tenancy_id)
 
 

@@ -52,7 +52,7 @@ def test_the_registry_report_lists_properties_and_tenancies():
 def test_the_financial_report_carries_lines_payments_and_formulas():
     flat = _home()
     stmt = issue(MonthlyStatement.objects.create(
-        apartment=flat, period=date(2026, 7, 1), total=Decimal("21500"),
+        apartment_id=flat.pk, period=date(2026, 7, 1), total=Decimal("21500"),
         tenancy_id=1,
         lines=[{"code": "rent", "label": "Аренда", "quantity": None,
                 "rate": "21500.00", "amount": "21500.00"}]))
@@ -74,7 +74,7 @@ def test_the_financial_report_carries_lines_payments_and_formulas():
 def test_the_period_bounds_are_honoured():
     flat = _home()
     issue(MonthlyStatement.objects.create(
-        apartment=flat, period=date(2026, 6, 1), total=Decimal("1"),
+        apartment_id=flat.pk, period=date(2026, 6, 1), total=Decimal("1"),
         tenancy_id=1, lines=[{"code": "rent", "label": "Июньская строка",
                               "quantity": None, "rate": "1", "amount": "1"}]))
 

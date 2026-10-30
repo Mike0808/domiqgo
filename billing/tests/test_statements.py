@@ -109,7 +109,7 @@ def test_generate_is_idempotent_and_keeps_status():
     again = generate_statement(a, date(2026, 7, 1))
     assert again.pk == stmt.pk
     assert again.status == MonthlyStatement.PAID
-    assert MonthlyStatement.objects.filter(apartment=a, period=date(2026, 7, 1)).count() == 1
+    assert MonthlyStatement.objects.filter(apartment_id=a.pk, period=date(2026, 7, 1)).count() == 1
 
 def test_first_month_baseline_comes_from_meter_initial_values():
     a = Apartment.objects.create(label="кв", has_hot_water=False, has_sewage=False)
@@ -263,7 +263,7 @@ def test_the_bill_takes_the_service_composition_from_properties():
         apartment_id=a.pk, label="кв", has_cold_water=True, has_hot_water=True,
         has_sewage=False, gvs_heat_norm=Decimal("0.05229"))
 
-    with patch("billing.services.statements.properties.get_property",
+    with patch("modules.billing.application.generation.properties.get_property",
                return_value=without_sewage):
         stmt = generate_statement(a, date(2026, 7, 1))
 
@@ -281,7 +281,7 @@ def test_the_meter_reconciliation_asks_properties_too():
         apartment_id=a.pk, label="кв", has_cold_water=False, has_hot_water=True,
         has_sewage=False, gvs_heat_norm=Decimal("0.05229"))
 
-    with patch("billing.services.statements.properties.get_property",
+    with patch("modules.billing.application.generation.properties.get_property",
                return_value=only_hot_water):
         missing = missing_meters(a)
 

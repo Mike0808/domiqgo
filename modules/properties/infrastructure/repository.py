@@ -11,6 +11,7 @@ def _to_domain(row) -> Apartment:
         apartment_id=row.pk, label=row.label,
         has_cold_water=row.has_cold_water, has_hot_water=row.has_hot_water,
         has_sewage=row.has_sewage, gvs_heat_norm=row.gvs_heat_norm,
+        round_total=row.round_total,
         address=row.address, decommissioned_on=row.decommissioned_on)
 
 

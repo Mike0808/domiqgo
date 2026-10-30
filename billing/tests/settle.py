@@ -39,13 +39,9 @@ def pend(statement):
 
 
 def wire():
-    from bus import subscribe
+    from modules.billing import api as billing
     from modules.identity import api as identity
     from modules.notifications import api as notifications
-    from modules.payments.events import PaymentConfirmed, PaymentVoided
 
-    from billing.services import settlement
-
-    subscribe(PaymentConfirmed, settlement.apply_confirmed)
-    subscribe(PaymentVoided, settlement.apply_voided)
+    billing.subscribe_to_payment_events()
     notifications.subscribe_to_domain_events(identity.list_owner_accounts)
