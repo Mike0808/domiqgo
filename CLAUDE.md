@@ -49,7 +49,7 @@ tools\tailwindcss.exe -i static_src\input.css -o billing\static\billing\css\app.
 
 Settings come from `.env` (`python-dotenv`; template in `deploy/.env.example`). `DEBUG` defaults to `1`; with `DEBUG=0` the dev `SECRET_KEY` is rejected. Database is SQLite with WAL + `IMMEDIATE` transactions even in production (1 CPU / 1 GB VPS); `DB_ENGINE=postgres` + `uv sync --extra postgres` switches without code changes.
 
-Production is Docker Compose (`web` = gunicorn, `caddy` = TLS) — the entrypoint runs `migrate`, the image build runs `collectstatic`. Full runbook (backups to Yandex Disk, restore, wg-easy wiring) is in `deploy/README.md`. Design specs and implementation plans live in `docs/superpowers/`.
+Production is Docker Compose (`web` = gunicorn, `caddy` = TLS) — the entrypoint runs `migrate`, the image build runs `collectstatic`. Full runbook (backups to Yandex Disk, restore, wg-easy wiring) is in `deploy/README.md`; zero-data-loss upgrades with a side-by-side copy (`deploy/docker/compose.side-by-side.yml`) are in `deploy/UPGRADE.md`. Design specs and implementation plans live in `docs/superpowers/`.
 
 ## Frontend
 - Django templates only, no SPA
