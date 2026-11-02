@@ -22,6 +22,10 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-key-change-me")
 DEBUG = os.environ.get("DEBUG", "1") == "1"
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
+# Commit + date the running image was built from (Dockerfile ARG APP_VERSION,
+# passed by docker-compose.yml). Shown in the site footer.
+APP_VERSION = os.environ.get("APP_VERSION") or "неизвестна"
+
 # Fail closed: a production process (DEBUG=0) must never silently run with the
 # dev secret key — that means the .env file is missing or incomplete.
 if not DEBUG:
@@ -81,6 +85,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'billing.context_processors.app_version',
             ],
         },
     },

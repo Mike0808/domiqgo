@@ -1,6 +1,8 @@
 #!/bin/sh
 set -e
 
+echo "domiqgo version: ${APP_VERSION:-unknown}"
+
 mkdir -p "${MEDIA_ROOT:-/data/media}"
 
 python manage.py migrate --noinput

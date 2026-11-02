@@ -36,6 +36,7 @@ nano .env   # paste SECRET_KEY, keep DEBUG=0 and DB_ENGINE=sqlite
 ## 2. Build and start
 
 ```bash
+export APP_VERSION="$(git log -1 --format='%h %cs')"   # shown in the site footer
 docker compose up -d --build
 docker compose logs -f caddy   # watch the Let's Encrypt certificates arrive
 ```
@@ -86,8 +87,13 @@ the provider level, not with ufw.
 ```bash
 cd /srv/domiqgo
 git pull
+export APP_VERSION="$(git log -1 --format='%h %cs')"
 docker compose up -d --build
 ```
+
+The footer of every page then shows «версия <commit> <date>», so you can see
+which version the site runs; «версия неизвестна» means the image was built
+without `APP_VERSION` set.
 
 Migrations and collectstatic run automatically (entrypoint / image build).
 
