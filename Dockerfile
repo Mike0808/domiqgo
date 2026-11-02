@@ -20,6 +20,12 @@ COPY . .
 RUN SECRET_KEY=build-only DEBUG=1 python manage.py collectstatic --noinput
 
 RUN useradd --create-home app && mkdir -p /data && chown -R app:app /app /data
+
+# Commit + date this image was built from, shown in the site footer. The
+# build context has no .git, so the host passes it (see docker-compose.yml).
+ARG APP_VERSION=""
+ENV APP_VERSION=$APP_VERSION
+
 USER app
 
 EXPOSE 8000

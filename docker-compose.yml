@@ -18,7 +18,13 @@
 
 services:
   web:
-    build: .
+    build:
+      context: .
+      args:
+        # Set on the host when building, e.g.
+        #   export APP_VERSION="$(git log -1 --format='%h %cs')"
+        # Without it the footer says «версия неизвестна».
+        APP_VERSION: ${APP_VERSION:-}
     restart: unless-stopped
     env_file: .env
     environment:

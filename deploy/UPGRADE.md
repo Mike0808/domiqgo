@@ -130,6 +130,7 @@ Build, load the **copy** of the data, start:
 cd $NEW
 newc() { docker compose -p domiqgo-new -f docker-compose.yml -f deploy/docker/compose.side-by-side.yml "$@"; }
 
+export APP_VERSION="$(git log -1 --format='%h %cs')"   # shown in the footer
 newc build web
 
 # Put the backup into the new volume (as root, then hand it to the app user)
@@ -173,6 +174,8 @@ ssh -L 8001:127.0.0.1:8001 <user>@domiq-ufa.ru
 Open **http://localhost:8001** in the browser. (Plain http is expected here;
 browsers allow the secure session cookie on `localhost`.)
 
+- The page footer says «версия <commit> <date>» — the commit you just
+  built. (Versions older than this footer line show no version at all.)
 - Log in as a tenant: «Этот месяц», «История», «Чеки», «Документы» show the
   real data; an old receipt and the rental agreement open.
 - Upload a test receipt on «Чеки».
@@ -204,6 +207,7 @@ check, tar). Then:
 ```bash
 cd $APP
 git pull --ff-only                 # moves the live checkout to the new master
+export APP_VERSION="$(git log -1 --format='%h %cs')"
 docker compose build web           # build while the old site still serves
 docker compose up -d               # recreates web: migrations run, then gunicorn starts
 docker compose logs --since 5m web | grep -E 'Applying|Error|Listening'
@@ -221,8 +225,9 @@ docker compose exec -T web python manage.py shell -c "from django.contrib.sites.
 
 Check the live site:
 
-- `https://domiq-ufa.ru/login/` loads; a tenant can log in and sees their
-  data; «Чеки» is there.
+- `https://domiq-ufa.ru/login/` loads and its footer shows the new
+  «версия …» (same as `echo $APP_VERSION`); a tenant can log in and sees
+  their data; «Чеки» is there.
 - `https://domiq-ufa.ru/admin/` works for the landlord.
 - Send the Telegram bot a message — it answers (the webhook URL hasn't
   changed, so nothing needs re-registering).
