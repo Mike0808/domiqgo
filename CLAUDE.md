@@ -6,7 +6,7 @@ Utility billing portal for rented apartments (domiq-ufa.ru). Django 5.1 monolith
 
 ## Commands
 
-Python deps are managed with `uv` (project is not an installable package).
+Python deps are managed with `uv` (project is not an installable package). Use Python 3.12 (`uv sync -p 3.12`, same as the Dockerfile): Django 5.1 template rendering breaks on Python 3.14+.
 
 ```powershell
 uv sync                                   # .venv incl. dev deps (pytest)
@@ -27,7 +27,7 @@ tools\tailwindcss.exe -i static_src\input.css -o billing\static\billing\css\app.
 
 ## Architecture
 
-**Two audiences.** Tenants use the portal (`billing/views.py`: current month readings, history, documents, OAuth connections). The landlord works entirely in Django admin (`billing/admin.py`) — there is no custom back-office. Users without a `Tenant` row who are staff get redirected to `/admin/`. No self-registration: the landlord creates every account.
+**Two audiences.** Tenants use the portal (`billing/views.py`: current month readings, history, receipt upload + «Мои чеки», documents, OAuth connections). The landlord works entirely in Django admin (`billing/admin.py`) — there is no custom back-office. Users without a `Tenant` row who are staff get redirected to `/admin/`. No self-registration: the landlord creates every account.
 
 **Billing pipeline** — keep the layers separate:
 - `services/calculation.py` — pure, DB-free `compute_statement(config, current, previous, tariffs)` on `Decimal`s (rounding rules, two-component hot water via `gvs_heat_norm`, optional floor-to-50 ₽ total with an explicit adjustment line).
@@ -43,7 +43,7 @@ tools\tailwindcss.exe -i static_src\input.css -o billing\static\billing\css\app.
 - `config/urls.py` deliberately does not include `allauth.urls` (it would expose local signup); it builds per-provider routes from the provider registry instead.
 - `billing/esia_provider/` is a custom Gosuslugi provider with `openid` scope only; it decodes the id_token **without signature verification**. `config/settings.py` refuses to boot with `DEBUG=0` against production ESIA unless `ESIA_ALLOW_UNVERIFIED_SIGNATURE=1`.
 
-**Media is private.** `/media/` is never served statically (not even in DEBUG); uploads go through the auth-checked `billing.views.media_file`.
+**Media is private.** `/media/` is never served statically (not even in DEBUG); uploads go through the auth-checked `billing.views.media_file` (documents → their tenant, receipts → tenants of that apartment, everything → staff).
 
 ## Configuration & deployment
 
