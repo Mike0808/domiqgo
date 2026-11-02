@@ -1,0 +1,23 @@
+# Second copy of the site for trying a new version on a COPY of the live data
+# while the live stack keeps running. Full procedure: deploy/UPGRADE.md.
+#
+#   docker compose -p domiqgo-new -f docker-compose.yml \
+#       -f deploy/docker/compose.side-by-side.yml up -d --build web
+#
+# Always pass `-p domiqgo-new`: it gives this copy its own containers and its
+# own volume (domiqgo-new_data), so nothing here touches the live `data`.
+# Start only `web` — the live stack's Caddy keeps ports 80/443.
+#
+# Listens on the server's loopback only; open it through an SSH tunnel:
+#   ssh -L 8001:127.0.0.1:8001 <user>@<server>   ->   http://localhost:8001
+services:
+  web:
+    environment:
+      GUNICORN_WORKERS: "1"            # 1 GB VPS runs two stacks for a while
+      ALLOWED_HOSTS: "localhost,127.0.0.1"
+      CSRF_TRUSTED_ORIGINS: "http://localhost:8001"
+      # The live stack owns the Telegram webhook; this copy must never answer.
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_WEBHOOK_SECRET: ""
+    ports:
+      - "127.0.0.1:8001:8000"

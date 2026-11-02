@@ -90,6 +90,9 @@ if [ -d "$TMP/media" ]; then
     docker compose run --rm --no-deps --entrypoint sh web -c 'rm -rf /data/media'
     docker compose cp "$TMP/media" web:/data/media
 fi
+# docker compose cp leaves the copies owned by root; the app user must be
+# able to write the DB (and its -wal/-shm files) and add media.
+docker compose run --rm --no-deps -u root --entrypoint chown web -R app:app /data
 docker compose start web
 
 # 5. Verify the site answers.

@@ -91,6 +91,10 @@ docker compose up -d --build
 
 Migrations and collectstatic run automatically (entrypoint / image build).
 
+For a bigger upgrade (new migrations, new `.env` variables), follow
+[UPGRADE.md](UPGRADE.md) instead: backup first, try the new version beside
+the live one on a copy of the data, then switch, with a tested rollback.
+
 ## Backups (SQLite + uploads → Yandex Disk)
 
 Everything that matters lives on the `data` volume: `/data/db.sqlite3` and
