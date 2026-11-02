@@ -18,6 +18,12 @@ def test_login_page_shows_all_three_provider_buttons():
     assert "Яндекс" in html
     assert "VK" in html
     assert "Госуслуги" in html
+    assert 'href="/accounts/esia/login/' in html
+
+def test_login_page_leaks_no_template_comments():
+    # {# #} is single-line only; a multi-line one renders as visible text.
+    html = Client().get("/login/").content.decode()
+    assert "{#" not in html and "#}" not in html
 
 def test_yandex_login_url_redirects_toward_provider_not_404():
     resp = Client().get("/accounts/yandex/login/")
