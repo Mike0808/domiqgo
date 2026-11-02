@@ -1,5 +1,6 @@
 from decimal import Decimal
 from django import forms
+from django.core.validators import FileExtensionValidator
 
 class MeterReadingForm(forms.Form):
     """Dynamic form: one DecimalField per meter this apartment uses.
@@ -23,6 +24,21 @@ class MeterReadingForm(forms.Form):
                 label = f"{label} — счётчик № {serials[meter]}"
             self.fields[meter] = forms.DecimalField(
                 label=label, min_value=Decimal("0"), max_digits=12, decimal_places=3)
+
+RECEIPT_EXTENSIONS = ["jpg", "jpeg", "png", "heic", "webp", "pdf"]
+RECEIPT_MAX_BYTES = 10 * 1024 * 1024
+
+class ReceiptUploadForm(forms.Form):
+    file = forms.FileField(
+        label="Фото или PDF чека",
+        help_text="JPG, PNG, HEIC, WEBP или PDF, до 10 МБ.",
+        validators=[FileExtensionValidator(RECEIPT_EXTENSIONS)])
+
+    def clean_file(self):
+        f = self.cleaned_data["file"]
+        if f.size > RECEIPT_MAX_BYTES:
+            raise forms.ValidationError("Файл больше 10 МБ.")
+        return f
 
 class ConsentForm(forms.Form):
     consent = forms.BooleanField(

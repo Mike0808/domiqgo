@@ -33,6 +33,8 @@
        class="rounded-t px-3 py-2 text-sm {% if url_name == 'current_month' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Этот месяц</a>
     <a href="{% url 'history' %}"
        class="rounded-t px-3 py-2 text-sm {% if url_name == 'history' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">История</a>
+    <a href="{% url 'receipts' %}"
+       class="rounded-t px-3 py-2 text-sm {% if url_name == 'receipts' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Чеки</a>
     <a href="{% url 'documents' %}"
        class="rounded-t px-3 py-2 text-sm {% if url_name == 'documents' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Документы</a>
     <a href="{% url 'oauth_connections' %}"

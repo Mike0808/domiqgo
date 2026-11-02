@@ -8,9 +8,10 @@ from django.utils import timezone
 from django.views.static import serve
 from allauth.socialaccount.models import SocialAccount
 from .consent import PRIVACY_POLICY_VERSION
-from .forms import MeterReadingForm, ConsentForm
-from .models import Document, MeterReading, MonthlyStatement, Tenant
+from .forms import MeterReadingForm, ConsentForm, ReceiptUploadForm
+from .models import Document, MeterReading, MonthlyStatement, Payment, Tenant
 from .services.calculation import MissingTariffError
+from .services.intake import NoUnpaidStatementError, attach_receipt, earliest_unpaid_statement
 from .services.statements import MissingBaselineError, meters_for, generate_statement
 
 def _current_period():
@@ -105,14 +106,40 @@ def documents(request):
     return render(request, "billing/documents.html", {"documents": docs})
 
 @login_required
+def receipts(request):
+    tenant = _tenant_for(request)
+    if tenant is None:
+        return _no_tenant_response(request)
+    has_unpaid = earliest_unpaid_statement(tenant.apartment) is not None
+    form = None
+    if request.method == "POST":
+        form = ReceiptUploadForm(request.POST, request.FILES)
+        if form.is_valid():
+            try:
+                attach_receipt(tenant, form.cleaned_data["file"], source=Payment.WEB)
+            except NoUnpaidStatementError:
+                messages.error(request, "Нет неоплаченных начислений.")
+            else:
+                messages.success(request, "Чек получен и отправлен на проверку.")
+            return redirect("receipts")
+    elif has_unpaid:
+        form = ReceiptUploadForm()
+    payments = (Payment.objects.filter(statement__apartment=tenant.apartment)
+                .select_related("statement"))
+    return render(request, "billing/receipts.html", {"form": form, "payments": payments})
+
+@login_required
 def media_file(request, path):
     """Serve an uploaded file only to its owner (or staff).
 
     All /media URLs route here — nothing under MEDIA_ROOT is ever served
     without authentication (rental agreements contain passport data).
+    Receipts are visible to the tenants of the apartment they were paid for.
     """
-    if not request.user.is_staff and not Document.objects.filter(
-            file=path, tenant__user=request.user).exists():
+    if not request.user.is_staff and not (
+            Document.objects.filter(file=path, tenant__user=request.user).exists()
+            or Payment.objects.filter(
+                file=path, statement__apartment__tenants__user=request.user).exists()):
         raise Http404
     return serve(request, path, document_root=settings.MEDIA_ROOT)
 

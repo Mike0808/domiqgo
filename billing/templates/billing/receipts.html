@@ -1,0 +1,42 @@
+{% extends "billing/base.html" %}
+{% load crispy_forms_tags %}
+{% block title %}Мои чеки{% endblock %}
+{% block content %}
+<h1 class="mb-6 text-3xl font-bold">Чеки</h1>
+
+{% if form %}
+<section class="mb-6 rounded-lg border border-line bg-white p-5">
+  <h2 class="mb-1 font-bold">Загрузить чек</h2>
+  <p class="mb-3 text-sm text-ink-soft">Чек прикрепится к самому раннему неоплаченному месяцу и уйдёт арендодателю на проверку.</p>
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form|crispy }}
+    <button type="submit"
+            class="mt-2 w-full rounded bg-accent px-4 py-2.5 font-bold text-white hover:bg-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+      Отправить чек
+    </button>
+  </form>
+</section>
+{% else %}
+<section class="mb-6 rounded-lg border border-line bg-white p-5 text-sm text-ink-soft">
+  Неоплаченных начислений нет — загружать чек пока не нужно.
+</section>
+{% endif %}
+
+<h2 class="mb-3 font-bold">Мои чеки</h2>
+{% for p in payments %}
+<a href="{{ p.file.url }}" hx-boost="false" target="_blank"
+   class="mb-3 flex items-center justify-between gap-3 rounded-lg border border-line bg-white p-4 hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+  <span>
+    <span class="block font-bold capitalize">{{ p.statement.period|date:"F Y" }}</span>
+    <span class="block text-xs text-ink-soft">{{ p.get_source_display }} · {{ p.submitted_at|date:"d.m.Y H:i" }}</span>
+    {% if p.note %}<span class="block text-xs text-ink-soft">{{ p.note }}</span>{% endif %}
+  </span>
+  <span class="stamp {% if p.status == 'confirmed' %}stamp-paid{% elif p.status == 'rejected' %}stamp-unpaid{% else %}stamp-pending{% endif %}">{{ p.get_status_display }}</span>
+</a>
+{% empty %}
+<section class="rounded-lg border border-line bg-white p-5 text-sm text-ink-soft">
+  Чеков пока нет. Их также можно присылать боту в Telegram.
+</section>
+{% endfor %}
+{% endblock %}
