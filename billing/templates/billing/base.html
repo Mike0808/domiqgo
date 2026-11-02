@@ -30,15 +30,15 @@
   {% with url_name=request.resolver_match.url_name %}
   <nav class="mx-auto flex max-w-xl gap-1 px-4 pt-3">
     <a href="{% url 'current_month' %}"
-       class="rounded-t px-3 py-2 text-sm {% if url_name == 'current_month' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Этот месяц</a>
+       class="rounded-t px-2 py-2 text-sm {% if url_name == 'current_month' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Этот месяц</a>
     <a href="{% url 'history' %}"
-       class="rounded-t px-3 py-2 text-sm {% if url_name == 'history' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">История</a>
+       class="rounded-t px-2 py-2 text-sm {% if url_name == 'history' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">История</a>
     <a href="{% url 'receipts' %}"
-       class="rounded-t px-3 py-2 text-sm {% if url_name == 'receipts' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Чеки</a>
+       class="rounded-t px-2 py-2 text-sm {% if url_name == 'receipts' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Чеки</a>
     <a href="{% url 'documents' %}"
-       class="rounded-t px-3 py-2 text-sm {% if url_name == 'documents' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Документы</a>
+       class="rounded-t px-2 py-2 text-sm {% if url_name == 'documents' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Документы</a>
     <a href="{% url 'oauth_connections' %}"
-       class="rounded-t px-3 py-2 text-sm {% if url_name == 'oauth_connections' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Способы входа</a>
+       class="rounded-t px-2 py-2 text-sm {% if url_name == 'oauth_connections' %}border-x border-t border-line bg-paper font-bold{% else %}text-ink-soft hover:text-ink{% endif %}">Способы входа</a>
   </nav>
   {% endwith %}
   {% endif %}

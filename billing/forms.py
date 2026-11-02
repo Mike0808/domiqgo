@@ -31,7 +31,6 @@ RECEIPT_MAX_BYTES = 10 * 1024 * 1024
 class ReceiptUploadForm(forms.Form):
     file = forms.FileField(
         label="Фото или PDF чека",
-        help_text="JPG, PNG, HEIC, WEBP или PDF, до 10 МБ.",
         validators=[FileExtensionValidator(RECEIPT_EXTENSIONS)])
 
     def clean_file(self):
