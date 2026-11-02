@@ -7,7 +7,7 @@
 {% if form %}
 <section class="mb-6 rounded-lg border border-line bg-white p-5">
   <h2 class="mb-1 font-bold">Загрузить чек</h2>
-  <p class="mb-3 text-sm text-ink-soft">Чек прикрепится к самому раннему неоплаченному месяцу и уйдёт арендодателю на проверку.</p>
+  <p class="mb-3 text-sm text-ink-soft">Чек прикрепится к самому раннему неоплаченному месяцу и уйдёт арендодателю на проверку. JPG, PNG, HEIC, WEBP или PDF, до 10 МБ.</p>
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
     {{ form|crispy }}
